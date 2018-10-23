@@ -1,0 +1,149 @@
+---
+title: "Context and enrichment/depetion of DMRs with respect to CGI features"
+author: "Peter Hickey"
+date: "13 November 2016"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r, include=FALSE, setup}
+knitr::opts_chunk$set(echo = FALSE, comment = "#>", collapse = TRUE, 
+                      message = FALSE, results = "hide", warning = FALSE)
+load("../objects/assays-and-features.rda")
+source("../scripts/functions.R")
+```
+
+```{r, message = FALSE, pkgs}
+library(GenomicRanges)
+library(rtracklayer)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(UpSetR)
+```
+
+# CGI context of DMRs and bigDMRs
+
+Using all POS DMRs
+
+## DMRs
+
+```{r, DMRs-CGI-context}
+feature_names <- names(cgi_features)
+dmrs_pos_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(dmrs_pos, cgi_features[[feature_name]])), feature_name)
+}))
+dmrs_pos_hits_df <- data.frame(db = "UCSC",
+                                      feature = names(dmrs_pos_hits),
+                                      hits = unname(dmrs_pos_hits),
+                                      perc = 100 * unname(dmrs_pos_hits) / 
+                                        length(dmrs_pos),
+                                      stringsAsFactors = FALSE)
+split(dmrs_pos_hits_df, dmrs_pos_hits_df$db)
+x <- makeUpSetRList(dmrs_pos, cgi_features)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+- Vast majority of DMRs in open sea
+
+## DMR-CpGs
+
+Counting CpGs in DMRs rather than number of DMRs
+
+```{r, DMR-CpGs-CGI-context}
+feature_names <- names(cgi_features)
+dmrs_pos_cpgs_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(dmrs_pos_cpgs, 
+                           cgi_features[[feature_name]])), feature_name)
+}))
+dmrs_pos_cpgs_hits_df <- data.frame(db = "UCSC",
+                                           feature = names(dmrs_pos_cpgs_hits),
+                                           hits = unname(dmrs_pos_cpgs_hits),
+                                           perc = 100 * unname(dmrs_pos_cpgs_hits) / 
+                                             length(dmrs_pos_cpgs),
+                                           stringsAsFactors = FALSE)
+split(dmrs_pos_cpgs_hits_df, dmrs_pos_cpgs_hits_df$db)
+x <- makeUpSetRList(dmrs_pos_cpgs, cgi_features)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+- And, unsurprisingly, most DMR-CpGs are in open sea
+
+## bigDMRs
+
+```{r, bigDMRs-CGI-context}
+feature_names <- names(cgi_features)
+big_dmrs_pos_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(big_dmrs_pos, 
+                           cgi_features[[feature_name]])), feature_name)
+}))
+big_dmrs_pos_hits_df <- data.frame(db = "UCSC",
+                                          feature = names(cgi_features),
+                                          hits = unname(big_dmrs_pos_hits),
+                                          perc = 100 * unname(big_dmrs_pos_hits) / 
+                                            length(big_dmrs_pos),
+                                          stringsAsFactors = FALSE)
+split(big_dmrs_pos_hits_df, big_dmrs_pos_hits_df$db)
+x <- makeUpSetRList(big_dmrs_pos, cgi_features)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+- Vast majority of bigDMRs are in open sea
+
+## bigDMR-CpGs
+
+Counting CpGs in bigDMRs rather than number of bigDMRs
+
+```{r, bigDMR-CpGs-CGI-context}
+feature_names <- names(cgi_features)
+big_dmrs_pos_cpgs_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(big_dmrs_pos_cpgs, 
+                           cgi_features[[feature_name]])), feature_name)
+}))
+big_dmrs_pos_cpgs_hits_df <- 
+  data.frame(db = "UCSC",
+             feature = names(cgi_features),
+             hits = unname(big_dmrs_pos_cpgs_hits),
+             perc = 100 * unname(big_dmrs_pos_cpgs_hits) / 
+               length(big_dmrs_pos_cpgs),
+             stringsAsFactors = FALSE)
+split(big_dmrs_pos_cpgs_hits_df, big_dmrs_pos_cpgs_hits_df$db)
+x <- makeUpSetRList(big_dmrs_pos_cpgs, cgi_features)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+- And, unsurprisingly, most bigDMR-CpGs are in open sea
+
+# CGI enrichment/depletion of DMR-CpGs and bigDMR-CpGs
+
+Using all POS DMRs
+
+```{r}
+or_dmrs_pos_cpgs_cgi <- cbind(
+  FT(dmrs_pos_cpgs, non_dmrs_pos_cpgs, cgi_features, "UCSC"),
+  data.frame(source = factor("DMR-CpGs", 
+                             c("DMRs", "bigDMRs", "DMR-CpGs", "bigDMR-CpGs"))))
+or_big_dmrs_pos_cpgs_cgi <- cbind(
+  FT(big_dmrs_pos_cpgs, non_big_dmrs_pos_cpgs, cgi_features, "UCSC"),
+  data.frame(source = factor("bigDMR-CpGs", 
+                             c("DMRs", "bigDMRs", "DMR-CpGs", "bigDMR-CpGs"))))
+ggplot(rbind(or_dmrs_pos_cpgs_cgi, or_big_dmrs_pos_cpgs_cgi), 
+       aes(x = feature, y = log2(estimate), col = db)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_wrap(~ source, ncol = 2) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("All genes") + 
+  ylab("log2(OR) with 95% CI")
+```
+
+### DMR-CpGs
+
+- Enriched in shores, shelves, and CGIs, depleted in open sea
+
+### bigDMR-CpGs
+
+- Enriched in shelves and shores, depleted in CGI and open sea

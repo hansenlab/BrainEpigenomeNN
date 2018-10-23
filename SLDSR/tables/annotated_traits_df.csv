@@ -1,0 +1,31 @@
+Trait,Type,N,N_cases,N_controls
+ADHD,Psychiatric,96990,12645,84345
+Alzheimers disease,Neurological,54162,17008,37154
+Anorexia nervosa,Psychiatric,14600,3495,11105
+Anxiety disorder,Psychiatric,17526,5761,11765
+Autism spectrum disorder,Psychiatric,13556,6179,7377
+Bipolar disorder,Psychiatric,16731,NA,NA
+BMI,Additional_phenotype,339224,NA,NA
+Childhood cognitive performance,Behavioural-cognitive,17989,NA,NA
+Cigarettes per day,Behavioural-cognitive,38617,NA,NA
+College attainment,Behavioural-cognitive,120917,NA,NA
+Conscientiousness,Behavioural-cognitive,17375,NA,NA
+Coronary artery disease,Additional_phenotype,86995,NA,NA
+Crohns disease,Additional_phenotype,20883,NA,NA
+Depressive symptoms,Behavioural-cognitive,161460,NA,NA
+Epilepsy,Neurological,28218,7779,20439
+Ever smoked,Behavioural-cognitive,74035,NA,NA
+Extraversion,Behavioural-cognitive,63030,NA,NA
+Focal epilepsy,Neurological,22586,4601,17985
+Generalized epilepsy,Neurological,18769,2525,16244
+Height,Additional_phenotype,253288,NA,NA
+Intracarebral hemorrhage,Neurological,3026,1545,1481
+IQ,Behavioural-cognitive,78308,NA,NA
+Ischemic stroke,Neurological,29633,10307,19326
+Major depressive disorder,Psychiatric,18759,9240,9519
+Neuroticism,Behavioural-cognitive,170911,NA,NA
+Openness,Behavioural-cognitive,17375,NA,NA
+PTSD,Psychiatric,9537,2424,7113
+Schizophrenia,Psychiatric,77096,33640,43456
+Subjective well-being,Behavioural-cognitive,298420,NA,NA
+Years of education,Behavioural-cognitive,293723,NA,NA

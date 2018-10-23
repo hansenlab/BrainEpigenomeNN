@@ -1,0 +1,545 @@
+---
+title: "Voom analysis of flow sorted brain ATAC-seq"
+author: "Peter Hickey"
+date: "3 July 2017"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      comment = "#>", 
+                      collapse = TRUE)
+```
+
+# Summary
+
+We used [__Bowtie2__](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) to 
+align reads for the 27 ATAC-seq libraries to hg19. Duplicate reads were marked using 
+[__Picard MarkDuplicates__](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
+. Peaks were called using MACS2 by combining all non-duplicate, high-quality 
+(mapQ > 30) alignments from each condition (`NAcc_pos`, `NAcc_neg`, `BA9_pos`, 
+`BA9_neg`) into a single BAM file; `narrowPeak` regions were used. The union of 
+all condition-specific `narrowPeak` regions defined the 
+`union_narrowPeak_reduced` that we use for testing for differential 
+accessibility. For each sample, we tallied the number of non-duplicate, 
+high-quality (mapQ > 30) alignments overlapping each 
+region using `GenomicAlignments::summarizeOverlaps()`. Only 22/27 samples are 
+used in the analysis (the 5 remaining samples are technical replicates). Only 
+regions with more than 1 count per million (cpm) in at least 5 libraries (the 
+size of the smallest group of samples) were retained for analysis.
+
+We then used `limma::voom()` to convert these normalised counts to $log_2$-cpm, 
+with associated weights, ready for linear modelling. The design matrix included 
+additive terms for `DONOR` and `TISSUE_NEUN` (`~ 0 + TISSUE_NEUN + DONOR`), 
+i.e. we block on `DONOR`.
+We ran 
+[__sva__](https://bioconductor.org/packages/release/bioc/html/sva.html) and 
+identified 4 SVs (although compared to the RNA-seq data, it is less obvious 
+what is driving the SVs. We include all 4 SVs in the design matrix.
+
+We tested for differential accessibility between:
+
+1. `NA_pos` and `BA_pos` (`NA_posvsBA9_pos`) 
+2. `NA_neg` and `BA_neg` (`NA_negvsBA9_neg`)
+3. `(NA_pos + BA9_pos) / 2` and `(NA_neg + BA9_neg) / 2` (`ave_pos_vs_ave_neg`)
+
+## Deliverables
+
+| Comparison      | CSV of `topTable()` output for all regions | CSV of DARs | CSV of DARs (abs(logFC > 1) | Mean-difference plot (.png) |
+|-----------------|-----------------|-----------------|-----------------|
+| NA_posvsBA9_pos | [`../extdata/topTable.NA_posvsBA9_pos.ATAC-seq.csv.gz`](../extdata/topTable.NA_posvsBA9_pos.ATAC-seq.csv.gz) |  [`../extdata/DARs.NA_posvsBA9_pos.ATAC-seq.csv.gz`](../extdata/DARs.NA_posvsBA9_pos.ATAC-seq.csv.gz) |  [`../extdata/DARs_with_logFCgeq1.NA_posvsBA9_pos.ATAC-seq.csv.gz`](../extdata/DARs_with_logFCgeq1.NA_posvsBA9_pos.ATAC-seq.csv.gz) | [`voom-flow-sorted-brain-ATAC-seq_files/figure-markdown_github/NA_posvsBA9_pos.MD-plot-1.png`](voom-flow-sorted-brain-ATAC-seq_files/figure-markdown_github/NA_posvsBA9_pos.MD-plot-1.png) |
+| NA_negvsBA9_neg | [`../extdata/topTable.NA_negvsBA9_neg.ATAC-seq.csv.gz`](../extdata/topTable.NA_negvsBA9_neg.ATAC-seq.csv.gz) | [`../extdata/DARs.NA_negvsBA9_neg.ATAC-seq.csv.gz`](../extdata/DARs.NA_negvsBA9_neg.ATAC-seq.csv.gz) | [`../extdata/DARs_with_logFCgeq1.NA_negvsBA9_neg.ATAC-seq.csv.gz`](../extdata/DARs_with_logFCgeq1.NA_negvsBA9_neg.ATAC-seq.csv.gz) | [`voom-flow-sorted-brain-ATAC-seq_files/figure-markdown_github/NA_negvsBA9_neg.MD-plot-1.png`](voom-flow-sorted-brain-ATAC-seq_files/figure-markdown_github/NA_negvsBA9_neg.MD-plot-1.png) |
+| ave_pos_vs_ave_neg | [`../extdata/topTable.ave_pos_vs_ave_neg.ATAC-seq.csv.gz`](../extdata/topTable.ave_pos_vs_ave_neg.ATAC-seq.csv.gz) | [`../extdata/DARs.ave_pos_vs_ave_neg.ATAC-seq.csv.gz`](../extdata/DARs.ave_pos_vs_ave_neg.ATAC-seq.csv.gz) | [`../extdata/DARs_with_logFCgeq1.ave_pos_vs_ave_neg.ATAC-seq.csv.gz`](../extdata/DARs_with_logFCgeq1.ave_pos_vs_ave_neg.ATAC-seq.csv.gz) | [`voom-flow-sorted-brain-ATAC-seq_files/figure-markdown_github/ave_pos_vs_ave_neg.MD-plot-1.png`](voom-flow-sorted-brain-ATAC-seq_files/figure-markdown_github/ave_pos_vs_ave_neg.MD-plot-1.png) |
+
+# Full analysis
+
+## Load packages
+
+```{r, message = FALSE}
+library(SummarizedExperiment)
+library(limma)
+library(edgeR)
+library(sva)
+library(scales)
+```
+
+## Load data and construct a _DGEList_ object of normalised counts
+
+Construct _DGEList_ objects for use with [__voom__](https://bioconductor.org/packages/voom) from the
+_SummarizedExperiment_ objects created in
+[`../scripts/make-SummarizedExperiment.R`](../scripts/make-SummarizedExperiment.R).
+Spefically, make one object for the data for the all samples with rows 
+corresponding to MACS2 peaks called from all 27 libraries (the 'overall' 
+peakset).
+
+**NOTE:** We only retain autosomal peaks.
+
+We have a few libraries as technical replicates; for simplicity, we just select 
+the first of these technical replicate libraries,
+
+```{r}
+se <- 
+  readRDS("../objects/flow-sorted-brain-atac.union_narrowPeak_reduced.se.rds")
+se$NEUN_COLOR <- ifelse(se$NEUN_COLOR == "firebrick3", "purple", "darkgreen")
+
+# Drop rep2 libraries
+se <- se[, se$REPLICATE == "rep1"]
+
+# Drop non-autosomal peaks
+se <- keepSeqlevels(se, paste0("chr", 1:22), pruning.mode = "coarse")
+
+# Construct DGEList object
+dgelist <- DGEList(counts = assay(se, "counts"),
+                   lib.size = colSums(assay(se, "counts")),
+                   samples = colData(se),
+                   genes = as.data.frame(rowRanges(se)))
+dim(dgelist)
+```
+
+### Filter out peaks that are lowly enriched in most samples
+
+[Gordon says](https://stat.ethz.ch/pipermail/bioconductor/2012-September/047995.html):
+
+> Note that our recommended filtering is `keep <- rowSums(cpm(dge) > k) >= X`, where `X` is the sample size of the smallest group size ... You are also free to vary k, depending on your sequencing depth.
+
+Our smallest group size contains `r min(xtabs(~ TISSUE_NEUN, dgelist$samples))` 
+samples. We explore a range of `k`
+
+```{r}
+# Group sizes
+xtabs(~ TISSUE + NEUN, dgelist$samples)
+
+# Vary k from 0 (no filtering) to k = 5
+sapply(0:5, function(k) sum(rowSums(cpm(dgelist) > k) >= 5))
+```
+
+We use `k = 1`, keeping 
+`r round(100 * sum(rowSums(cpm(dgelist) > 1) >= 5) / nrow(dgelist))`%
+of peaks for differential testing. As a point of reference, Greenleaf report 
+most of his data with respect to a set of 50,000 'top' peaks.
+
+```{r}
+keep <- rowSums(cpm(dgelist) > 1) >= 5
+dgelist <- dgelist[keep, ]
+dim(dgelist)
+```
+
+Next, perform TMM normalisation
+
+```{r}
+dgelist <- calcNormFactors(dgelist)
+```
+
+We now have normalised counts  in a _DGEList_ 
+
+## Including `DONOR` in the design matrix
+
+### Design matrix
+
+At this point, we need to specify design matrix. We have an almost balanced 
+design with `r ncol(dgelist)` ATAC-seq libraries from 6 donors in 4 conditions.
+
+```{r}
+xtabs(~ DONOR + TISSUE_NEUN, dgelist$samples)
+```
+
+We have (mostly) the same 6 donors in the 4 conditions, so we block on `DONOR`
+to make all subsequent comparisons 'within `DONOR`'.
+
+```{r}
+design <- model.matrix(~ 0 + TISSUE_NEUN + DONOR, dgelist$samples)
+colnames(design) <- gsub("TISSUE_NEUN", "", colnames(design))
+design
+```
+
+Under this design matrix, the baseline is donor 5343 (`DONOR5343`).
+
+After blocking on `DONOR` we have `r ncol(dgelist) - qr(design)$rank` residual
+degrees of freedom.
+
+
+### Transformation with `limma::voom()`
+
+We use `limma::voom()` to convert these normalised counts to $log_2$-cpm, with
+associated weights, ready for linear modelling.
+
+```{r}
+elist <- voom(counts = dgelist, design = design, plot = TRUE)
+```
+
+The design matrix, `design`, is used by `voom()` to compute the
+observational-level weights (`elist$weights`) but not to compute the numeric
+matrix of normalised expression values on the log2 scale (`elist$E`).
+
+### Checking for batch effects
+
+Let's look at the data using an MDS plot of the voom-transformed data.
+
+```{r}
+plotMDS(elist,
+        top = 500,
+        labels = paste0(elist$targets$DONOR, "-", elist$targets$TISSUE),
+        col = elist$targets$NEUN_COLOR,
+        gene.selection = "common", 
+        main = "top = 500")
+legend("bottom",
+       legend = unique(elist$targets$NEUN),
+       col = unique(elist$targets$NEUN_COLOR),
+       pch = 16)
+```
+
+__NOTE:__ The above uses the default of `top = 500`, which means that only the 
+top 500 peaks are used to form the MDS plot. Instead, if we could use the 
+top 2.5% of peaks to calculate pairwise distances; this is 
+approximately what is the default for a gene expression analysis in human
+`500 / number_of_genes = 500 / 20000`
+
+```{r}
+plotMDS(elist,
+        top = ceiling(0.025 * nrow(elist)),
+        labels = paste0(elist$targets$DONOR, "-", elist$targets$TISSUE),
+        col = elist$targets$NEUN_COLOR,
+        gene.selection = "common", 
+        main = "top = 2.5%")
+legend("bottom",
+       legend = unique(elist$targets$NEUN),
+       col = unique(elist$targets$NEUN_COLOR),
+       pch = 16)
+```
+
+We have good separation of NeuN+ cells (`pos`) and NeuN- cells (`neg`) along 
+PC1. However, we also have some clustering by `DONOR` on PC2, which is stronger 
+than any clustering by `TISSUE:NEUN` along the same axis (more evidence in the 
+`top = 500` plot)
+
+Our blocking factor, `DONOR`, may be thought of as a 'batch effect'; we can see 
+the effect of 'removing' `DONOR` by using `limma::removeBatchEffect()` in 
+combination with `limma::plotMDS()`:
+
+
+```{r}
+design_without_donor <- model.matrix(~ 0 + TISSUE_NEUN, elist$targets)
+colnames(design_without_donor) <- gsub("TISSUE_NEUN", "",
+                                       colnames(design_without_donor))
+
+plotMDS(removeBatchEffect(x = elist,
+                          batch = elist$targets$DONOR,
+                          design = design_without_donor),
+        top = 500,
+        labels = paste0(elist$targets$DONOR, "-", elist$targets$TISSUE),
+        col = elist$targets$NEUN_COLOR,
+        gene.selection = "common",
+        main = "Effect of blocking on DONOR (top = 500)")
+legend("top",
+       legend = unique(elist$targets$NEUN),
+       col = unique(elist$targets$NEUN_COLOR),
+       pch = 16)
+
+plotMDS(removeBatchEffect(x = elist,
+                          batch = elist$targets$DONOR,
+                          design = design_without_donor),
+        top = ceiling(0.025 * nrow(elist)),
+        labels = paste0(elist$targets$DONOR, "-", elist$targets$TISSUE),
+        col = elist$targets$NEUN_COLOR,
+        gene.selection = "common",
+        main = "Effect of blocking on DONOR (top = 2.5%)")
+legend("top",
+       legend = unique(elist$targets$NEUN),
+       col = unique(elist$targets$NEUN_COLOR),
+       pch = 16)
+```
+
+In the updated plot, we retain the good separation of `pos` from `neg` while 
+improving our clustering by region (`NA` and `BA9`), more so in the `pos` 
+samples than the `neg` samples (see lower right of plot where `5456-NA-neg` and 
+`5347-BA9-neg` overlap).
+
+We run [__sva__](http://bioconductor.org/packages/sva/) to check for any 
+additional batch effects.
+
+### SVA
+
+Note that __sva__ just uses `elist$E` because it does not incorporate the
+observational-level weights computed by `voom()`.
+
+We first need to estimate the number of SVs
+
+```{r}
+n_sv <- num.sv(dat = elist$E,
+               mod = elist$design,
+               method = "be")
+n_sv
+```
+
+We then estimate these `r n_sv` surrogate variables and plot them coloured by 
+a few key variables to try to understand their potential source.
+
+```{r}
+design0 <- model.matrix(~ 1 + DONOR, elist$targets)
+svs <- sva(dat = elist$E, 
+           mod = elist$design,
+           mod0 = design0,
+           n.sv = n_sv)
+```
+
+#### SV2 vs SV1
+
+```{r}
+plot(svs$sv[, 1], svs$sv[, 2],
+     col = elist$targets$DONOR_COLOR, 
+     main = "DONOR",
+     pch = 16)
+legend("bottomleft", 
+       legend = unique(elist$targets$DONOR), 
+       col = unique(elist$targets$DONOR_COLOR),  
+       pch = 16)
+plot(svs$sv[, 1], svs$sv[, 2], 
+     col = elist$targets$TISSUE_COLOR,
+     main = "TISSUE",
+     pch = 16)
+legend("bottomleft", 
+       legend = unique(elist$targets$TISSUE), 
+       col = unique(elist$targets$TISSUE_COLOR),  
+       pch = 16)
+plot(svs$sv[, 1], svs$sv[, 2],
+     col = elist$targets$NEUN_COLOR,
+     main = "NEUN",
+     pch = 16)
+legend("bottomleft", 
+       legend = unique(elist$targets$NEUN), 
+       col = unique(elist$targets$NEUN_COLOR),  
+       pch = 16)
+plot(svs$sv[, 1], svs$sv[, 2],
+     col = as.numeric(elist$targets$FLOW_DATE),
+     main = "FLOW_DATE",
+     pch = 16)
+legend("bottomleft", 
+       legend = unique(elist$targets$FLOW_DATE), 
+       col = unique(as.numeric(elist$targets$FLOW_DATE)),  
+       pch = 16)
+```
+
+#### SV3 vs SV2
+
+```{r}
+plot(svs$sv[, 2], svs$sv[, 3],
+     col = elist$targets$DONOR_COLOR, 
+     main = "DONOR",
+     pch = 16)
+legend("topleft", 
+       legend = unique(elist$targets$DONOR), 
+       col = unique(elist$targets$DONOR_COLOR),  
+       pch = 16)
+plot(svs$sv[, 2], svs$sv[, 3], 
+     col = elist$targets$TISSUE_COLOR,
+     main = "TISSUE",
+     pch = 16)
+legend("topleft", 
+       legend = unique(elist$targets$TISSUE), 
+       col = unique(elist$targets$TISSUE_COLOR),  
+       pch = 16)
+plot(svs$sv[, 2], svs$sv[, 3],
+     col = elist$targets$NEUN_COLOR,
+     main = "NEUN")
+legend("topleft", 
+       legend = unique(elist$targets$NEUN), 
+       col = unique(elist$targets$NEUN_COLOR),  
+       pch = 16)
+plot(svs$sv[, 2], svs$sv[, 3],
+     col = as.numeric(elist$targets$FLOW_DATE),
+     main = "FLOW_DATE",
+     pch = 16)
+legend("topleft", 
+       legend = unique(elist$targets$FLOW_DATE), 
+       col = unique(as.numeric(elist$targets$FLOW_DATE)),  
+       pch = 16)
+```
+
+#### SV4 vs SV3
+
+```{r}
+plot(svs$sv[, 3], svs$sv[, 4],
+     col = elist$targets$DONOR_COLOR, 
+     main = "DONOR",
+     pch = 16)
+legend("bottomright", 
+       legend = unique(elist$targets$DONOR), 
+       col = unique(elist$targets$DONOR_COLOR),  
+       pch = 16)
+plot(svs$sv[, 3], svs$sv[, 4],
+     col = elist$targets$TISSUE_COLOR,
+     main = "TISSUE",
+     pch = 16)
+legend("bottomright", 
+       legend = unique(elist$targets$TISSUE), 
+       col = unique(elist$targets$TISSUE_COLOR),  
+       pch = 16)
+plot(svs$sv[, 3], svs$sv[, 4],
+     col = elist$targets$NEUN_COLOR,
+     main = "NEUN",
+     pch = 16)
+legend("bottomright", 
+       legend = unique(elist$targets$NEUN), 
+       col = unique(elist$targets$NEUN_COLOR),  
+       pch = 16)
+plot(svs$sv[, 3], svs$sv[, 4],
+     col = as.numeric(elist$targets$FLOW_DATE),
+     main = "FLOW_DATE",
+     pch = 16)
+legend("bottomright", 
+       legend = unique(elist$targets$FLOW_DATE), 
+       col = unique(as.numeric(elist$targets$FLOW_DATE)),  
+       pch = 16)
+```
+
+#### SVA summary
+
+Compared to the RNA-seq data, it is less obvious what is driving the SVs. We 
+ultimately decided to include all 4 SVs in the design matrix.
+
+```{r}
+design_with_sv <- model.matrix(~ 0 + TISSUE_NEUN + DONOR + svs$sv, 
+                               elist$targets)
+colnames(design_with_sv) <- gsub("svs\\$", "", 
+                                 gsub("TISSUE_NEUN", "", 
+                                      colnames(design_with_sv)))
+design_with_sv
+elist_with_sv <- voom(counts = dgelist, design = design_with_sv, plot = TRUE)
+```
+
+This leaves us with `r ncol(elist_with_sv) - qr(elist_with_sv$design)$rank` 
+degrees of freedom with which to estimate the residual variation.
+
+### Contrasts
+
+The conditions we are want to compare are:
+
+1. `NA_posvsBA9_pos` differential accessibility between NA and BA9 in Neun+ cells
+2. `NA_negvsBA9_neg` differential accessibility between NA and BA9 in NeuN- cells
+3. `ave_pos_vs_ave_neg` differential accessibility between NeuN+ cells and NeuN- cells (each averaged over region).
+
+```{r}
+contrasts <- makeContrasts(
+  "NA_posvsBA9_pos" = NA_pos - BA9_pos,
+  "NA_negvsBA9_neg" = NA_neg - BA9_neg,
+  "ave_pos_vs_ave_neg" = (NA_pos + BA9_pos) / 2 - (NA_neg + BA9_neg) / 2,
+  levels = elist_with_sv$design
+)
+contrasts
+```
+
+### Linear modelling
+
+We are now ready to fit the linear models to the data and to test for DE 
+
+```{r}
+fit_with_sv <- lmFit(object = elist_with_sv, 
+                     design = elist_with_sv$design)
+fit_with_sv <- contrasts.fit(fit_with_sv, contrasts)
+fit_with_sv <- eBayes(fit_with_sv)
+```
+
+We summarise the number of differentially accessible regions in each comparison
+
+```{r}
+results_with_sv <- decideTests(fit_with_sv)
+summary(results_with_sv)
+vennDiagram(results_with_sv)
+```
+
+This is consistent with what we expect: lots of differential accessibility 
+between NeuN+ and NeuN- cells, lots of differential accessibility in NeuN+ 
+cells between NAcc and BA9, and almost no DE genes in NeuN- cells between NAcc 
+and BA9.
+
+### Mean-difference plots
+
+Let's take a look at the mean-difference plot (aka MA plot) for each comparison. 
+In each plot the peaks highlighted have an adjusted P-value < 0.05 and a 
+|logFC| > 1.
+
+```{r, NA_posvsBA9_pos.MD-plot}
+plotMD(fit_with_sv, column = 1, 
+       status = ifelse(
+         topTable(fit_with_sv, coef = 1, n = Inf, 
+                  sort.by = "none")$adj.P.Val < 0.05, 
+         "DAR", "Non-DAR"), 
+       hl.col = alpha("orange", 0.1), 
+       legend = "bottomright")
+```
+
+```{r, NA_negvsBA9_neg.MD-plot}
+plotMD(fit_with_sv, column = 2, 
+       status = ifelse(
+         topTable(fit_with_sv, coef = 2, n = Inf, 
+                  sort.by = "none")$adj.P.Val < 0.05, 
+         "DAR", "Non-DAR"), 
+       hl.col = alpha("orange", 0.3),
+       legend = "bottomright")
+```
+
+```{r, ave_pos_vs_ave_neg.MD-plot}
+plotMD(fit_with_sv, column = 3, 
+       status = ifelse(
+         topTable(fit_with_sv, coef = 3, n = Inf, 
+                  sort.by = "none")$adj.P.Val < 0.05, 
+         "DAR", "Non-DAR"), 
+       hl.col = alpha("orange", 0.3), 
+       values = c("DAR"),
+       legend = "bottomright")
+```
+
+### Writing the differentially accessible peaks list
+
+Finally, write the output of `topTable()`, the table of top differentially 
+accessibly peaks from the linear model fit, to disk as a CSV file for the 
+overall F-statistic as well as for each of the comparisons of interest. Also, 
+save the _MArrayLM_ object, `fit_with_sv`.
+
+__NOTE:__ The gene name is the first column although this column is unnamed in 
+the CSV file
+
+```{r}
+# Example of topTable output, looking at top hits ranked by B (log odds of DE)
+topTable(fit_with_sv, coef = "NA_posvsBA9_pos")
+
+# Write each to disk
+coefs <- c(list(NULL), as.list(colnames(fit_with_sv)))
+lapply(coefs, function(coef, fit, model) {
+  fn <- gzfile(paste0("../extdata/topTable.", ifelse(is.null(coef), "F-stat", 
+                                                     coef), 
+                      ".ATAC-seq.csv.gz"), 
+               open = "w")
+  write.csv(x = topTable(fit, coef = coef, n = Inf),
+            file = fn, 
+            row.names = TRUE,
+            quote = FALSE)
+  close(fn)
+  fn2 <- gzfile(paste0("../extdata/DARs.", ifelse(is.null(coef), "F-stat", 
+                                                  coef), 
+                       ".ATAC-seq.csv.gz"), 
+                open = "w")
+  write.csv(x = topTable(fit, coef = coef, n = Inf, p.value = 0.05),
+            file = fn2, 
+            row.names = TRUE,
+            quote = FALSE)
+  close(fn2)
+  fn3 <- gzfile(paste0("../extdata/DARs_with_logFCgeq1.", 
+                       ifelse(is.null(coef), "F-stat", coef), 
+                       ".ATAC-seq.csv.gz"), 
+                open = "w")
+  write.csv(x = topTable(fit, coef = coef, n = Inf, p.value = 0.05, lfc = 2),
+            file = fn3, 
+            row.names = TRUE,
+            quote = FALSE)
+  close(fn3)
+}, fit = fit_with_sv)
+saveRDS(fit_with_sv, "../objects/fit_with_sv.rds")
+saveRDS(elist_with_sv, "../objects/elist_with_sv.rds")
+```
+
+# Session Info
+
+```{r}
+devtools::session_info()
+```

@@ -1,0 +1,853 @@
+### ============================================================================
+### ATAC-seq
+###
+
+track ATAC-seq
+compositeTrack on
+visibility full
+# NOTE: "[A-Z]_" prefix on subGroup tags is to manually set sortOrder
+subGroup1 view Views \
+  A_CPM=ATAC-seq_CPM \
+  B_OCR=Open_chromatin_regions \
+  C_DAR=Differentially_accessible_regions
+subGroup2 NeuN NeuN_status \
+  A_pos=NeuN+ \
+  B_neg=NeuN- \
+  C_unsorted=Unsorted \
+  D_union=Union \
+  E_NA=Not_applicable
+subGroup3 Tissue Brain_region \
+  A_BA9=Dorsolateral_prefrontal_cortex \
+  B_BA24=Anterior_cingulate_gyrus \
+  C_HC=Hippocampus \
+  D_NAcc=Nucleus_accumbens \
+  E_union=Union \
+  F_NA=Not_applicable
+subGroup4 Comparison Comparison \
+  A_pos=Between_brain_regions_in_NeuN+_samples \
+  B_neg=Between_brain_regions_in_NeuN-_samples \
+  C_pos_vs_neg=Between_NeuN+_and_NeuN-_samples \
+  D_NAcc_pos_vs_BA9_pos=Between_NAcc_(NeuN+)_and_BA9_(NeuN+)_samples \
+  E_unsorted=Between_brain_regions_in_unsorted_samples \
+  F_NA=Not_applicable
+dimensions dimX=Tissue dimY=NeuN dimA=Comparison
+filterComposite dimA
+sortOrder NeuN=+ Tissue=+ Comparison=+ view=+
+type bed 3
+shortLabel ATAC-seq
+longLabel ATAC-seq CPM, OCRs, and DARs
+priority 4
+html docs/ATAC-seq
+
+  track OCRs
+  parent ATAC-seq on
+  shortLabel OCRs
+  longLabel Open chromatin regions (OCRs)
+  view B_OCR
+  visibility hide
+  type bigBed 9
+  viewUi off
+
+    track OCRs.BA9_neg
+    parent OCRs off
+    subGroups NeuN=B_neg Tissue=A_BA9 Comparison=F_NA view=B_OCR
+    bigDataUrl OCRs.BA9_neg.bb
+    shortLabel OCRs (BA9-)
+    longLabel OCRs in BA9 (NeuN-) samples
+    type bigBed 9
+    itemRgb on
+
+    track OCRs.NAcc_neg
+    parent OCRs off
+    subGroups NeuN=B_neg Tissue=D_NAcc Comparison=F_NA view=B_OCR
+    bigDataUrl OCRs.NAcc_neg.bb
+    shortLabel OCRs (NAcc-)
+    longLabel OCRs in NAcc (NeuN-) samples
+    type bigBed 9
+    itemRgb on
+
+    track OCRs.BA9_pos
+    parent OCRs off
+    subGroups NeuN=A_pos Tissue=A_BA9 Comparison=F_NA view=B_OCR
+    bigDataUrl OCRs.BA9_pos.bb
+    shortLabel OCRs (BA9+)
+    longLabel OCRs in BA9 (NeuN+) samples
+    type bigBed 9
+    itemRgb on
+
+    track OCRs.NAcc_pos
+    parent OCRs off
+    subGroups NeuN=A_pos Tissue=D_NAcc Comparison=F_NA view=B_OCR
+    bigDataUrl OCRs.NAcc_pos.bb
+    shortLabel OCRs (NAcc+)
+    longLabel OCRs in NAcc (NeuN+) samples
+    type bigBed 9
+    itemRgb on
+
+    track OCR.union
+    parent OCRs off
+    subGroups NeuN=D_union Tissue=E_union Comparison=F_NA view=B_OCR
+    bigDataUrl OCRs.union.bb
+    shortLabel OCRs (union)
+    longLabel Union of OCRs across all samples
+    type bigBed 9
+    itemRgb on
+
+  track DARs
+  parent ATAC-seq on
+  shortLabel DARs
+  longLabel Differentially accessible regions (DARs)
+  view C_DAR
+  visibility squish
+  type bigBed
+  viewUi on
+
+    track DARs.pos_vs_neg
+    parent DARs off
+    subGroups NeuN=E_NA Tissue=F_NA Comparison=C_pos_vs_neg view=C_DAR
+    bigDataUrl DARs.pos_vs_neg.bb
+    shortLabel DARs (+ vs -)
+    longLabel DARs between NeuN+ and NeuN- samples
+    type bigBed
+
+    track DARs.NAcc_pos_vs_BA9_pos
+    parent DARs on
+    subGroups NeuN=A_pos Tissue=F_NA Comparison=A_pos view=C_DAR
+    bigDataUrl DARs.NAcc_pos_vs_BA9_pos.bb
+    shortLabel DARs (+)
+    longLabel DARs between NAcc (NeuN+) and BA9 (NeuN+) samples
+    type bigBed
+
+    track DARs.NAcc_neg_vs_BA9_neg
+    parent DARs off
+    subGroups NeuN=B_neg Tissue=F_NA Comparison=B_neg view=C_DAR
+    bigDataUrl DARs.NAcc_neg_vs_BA9_neg.bb
+    shortLabel DARs (-)
+    longLabel DARs between NAcc (NeuN-) and BA9 (NeuN-) samples
+    type bigBed
+
+  track ATAC-seq_CPM
+  parent ATAC-seq on
+  shortLabel ATAC-seq CPM
+  longLabel Average ATAC-seq counts per million (CPM)
+  view A_CPM
+  visibility full
+  type bigWig
+  viewUi on
+  # NOTE: viewLimits were chosen by trial and error. They happen to roughly
+  #       coincide with the 0.99 quantile of non-zero CPM in NAcc_pos
+  viewLimits 0:0.1
+
+    track BA9_neg.ATAC-seq.cpm
+    parent ATAC-seq_CPM off
+    subGroups NeuN=B_neg Tissue=A_BA9 Comparison=F_NA view=A_CPM
+    bigDataUrl BA9_neg.ATAC-seq.cpm.bw
+    shortLabel ATAC CPM (BA9-)
+    longLabel Average ATAC-seq CPM in BA9 (NeuN-) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track NAcc_neg.ATAC-seq.cpm
+    parent ATAC-seq_CPM off
+    subGroups NeuN=B_neg Tissue=D_NAcc Comparison=F_NA view=A_CPM
+    bigDataUrl NAcc_neg.ATAC-seq.cpm.bw
+    shortLabel ATAC CPM (NAcc-)
+    longLabel Average ATAC-seq CPM in NAcc (NeuN-) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+    track BA9_pos.ATAC-seq.cpm
+    parent ATAC-seq_CPM on
+    subGroups NeuN=A_pos Tissue=A_BA9 Comparison=F_NA view=A_CPM
+    bigDataUrl BA9_pos.ATAC-seq.cpm.bw
+    shortLabel ATAC CPM (BA9+)
+    longLabel Average ATAC-seq CPM in BA9 (NeuN+) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track NAcc_pos.ATAC-seq.cpm
+    parent ATAC-seq_CPM on
+    subGroups NeuN=A_pos Tissue=D_NAcc Comparison=F_NA view=A_CPM
+    bigDataUrl NAcc_neg.ATAC-seq.cpm.bw
+    shortLabel ATAC CPM (NAcc+)
+    longLabel Average ATAC-seq CPM in NAcc (NeuN+) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+### ============================================================================
+### RNA-seq
+###
+
+track RNA-seq
+compositeTrack on
+visibility full
+# NOTE: "[A-Z]_" prefix on subGroup tags is to manually set sortOrder
+subGroup1 view Views \
+  A_CPM=RNA-seq_CPM \
+  B_DEG=Differentially_expressed_genes
+subGroup2 NeuN NeuN_status \
+  A_pos=NeuN+ \
+  B_neg=NeuN- \
+  C_unsorted=Unsorted \
+  D_union=Union \
+  E_NA=Not_applicable
+subGroup3 Tissue Brain_region \
+  A_BA9=Dorsolateral_prefrontal_cortex \
+  B_BA24=Anterior_cingulate_gyrus \
+  C_HC=Hippocampus \
+  D_NAcc=Nucleus_accumbens \
+  E_union=Union \
+  F_NA=Not_applicable
+subGroup4 Comparison Comparison \
+  A_pos=Between_brain_regions_in_NeuN+_samples \
+  B_neg=Between_brain_regions_in_NeuN-_samples \
+  C_pos_vs_neg=Between_NeuN+_and_NeuN-_samples \
+  D_NAcc_pos_vs_BA9_pos=Between_NAcc_(NeuN+)_and_BA9_(NeuN+)_samples \
+  E_unsorted=Between_brain_regions_in_unsorted_samples \
+  F_NA=Not_applicable
+dimensions dimX=Tissue dimY=NeuN dimA=Comparison
+filterComposite dimA
+sortOrder NeuN=+ Tissue=+ Comparison=+ view=+
+type bed 3
+shortLabel RNA-seq
+longLabel RNA-seq CPM and DEGs
+priority 5
+html docs/RNA-seq
+
+  track DEGs
+  parent RNA-seq on
+  shortLabel DEGs
+  longLabel Differentially expressed genes (DEGs) from RNA-sequencing data
+  view B_DEG
+  visibility squish
+  type bigBed
+  viewUi on
+
+    track DEGs.pos_vs_neg
+    parent DEGs off
+    subGroups NeuN=E_NA Tissue=F_NA Comparison=C_pos_vs_neg view=B_DEG
+    bigDataUrl DEGs.pos_vs_neg.bb
+    shortLabel DEGs (+ vs -)
+    longLabel DEGs between NeuN+ and NeuN- samples
+    type bigBed
+
+    track DEGs.NAcc_pos_vs_BA9_pos
+    parent DEGs on
+    subGroups NeuN=A_pos Tissue=F_NA Comparison=A_pos view=B_DEG
+    bigDataUrl DEGs.NAcc_pos_vs_BA9_pos.bb
+    shortLabel DEGs (+)
+    longLabel DEGs between NAcc (NeuN+) and BA9 (NeuN+)
+    type bigBed
+
+    track DEGs.NAcc_neg_vs_BA9_neg
+    parent DEGs off
+    subGroups NeuN=B_neg Tissue=F_NA Comparison=B_neg view=B_DEG
+    bigDataUrl DEGs.NAcc_neg_vs_BA9_neg.bb
+    shortLabel DEGs (-)
+    longLabel DEGs between NAcc (NeuN-) and BA9 (NeuN-)
+    type bigBed
+
+  track RNA-seq_CPM
+  parent RNA-seq on
+  shortLabel RNA-seq CPM
+  longLabel Average RNA-seq counts per million (CPM)
+  view A_CPM
+  visibility full
+  type bigWig
+  viewUi on
+  # NOTE: viewLimits were chosen by trial and error. They happen to roughly
+  #       coincide with the 0.99 quantile of non-zero CPM in NAcc_pos
+  viewLimits 0:1
+
+    track BA9_neg.RNA-seq.cpm
+    parent RNA-seq_CPM off
+    subGroups NeuN=B_neg Tissue=A_BA9 Comparison=F_NA view=A_CPM
+    bigDataUrl BA9_neg.RNA-seq.cpm.bw
+    shortLabel RNA CPM (BA9-)
+    longLabel Average RNA-seq CPM in BA9 (NeuN-) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track NAcc_neg.RNA-seq.cpm
+    parent RNA-seq_CPM off
+    subGroups NeuN=B_neg Tissue=D_NAcc Comparison=F_NA view=A_CPM
+    bigDataUrl NAcc_neg.RNA-seq.cpm.bw
+    shortLabel RNA CPM (NAcc-)
+    longLabel Average RNA-seq CPM in NAcc (NeuN-) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+    track BA9_pos.RNA-seq.cpm
+    parent RNA-seq_CPM on
+    subGroups NeuN=A_pos Tissue=A_BA9 Comparison=F_NA view=A_CPM
+    bigDataUrl BA9_pos.RNA-seq.cpm.bw
+    shortLabel RNA CPM (BA9+)
+    longLabel Average RNA-seq CPM in BA9 (NeuN+) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track NAcc_pos.RNA-seq.cpm
+    parent RNA-seq_CPM on
+    subGroups NeuN=A_pos Tissue=D_NAcc Comparison=F_NA view=A_CPM
+    bigDataUrl NAcc_neg.RNA-seq.cpm.bw
+    shortLabel RNA CPM (NAcc+)
+    longLabel Average RNA-seq CPM in NAcc (NeuN+) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+### ============================================================================
+### mCG
+###
+
+track WGBS_mCG
+compositeTrack on
+visibility full
+# NOTE: "[A-Z]_" prefix on subGroup tags is to manually set sortOrder
+subGroup1 view Views \
+  A_mCG=mCG \
+  B_CG-DMR=Differentially_methylated_regions
+subGroup2 NeuN NeuN_status \
+  A_pos=NeuN+ \
+  B_neg=NeuN- \
+  C_unsorted=Unsorted \
+  D_union=Union \
+  E_NA=Not_applicable
+subGroup3 Tissue Brain_region \
+  A_BA9=Dorsolateral_prefrontal_cortex \
+  B_BA24=Anterior_cingulate_gyrus \
+  C_HC=Hippocampus \
+  D_NAcc=Nucleus_accumbens \
+  E_union=Union \
+  F_NA=Not_applicable
+subGroup4 Comparison Comparison \
+  A_pos=Between_brain_regions_in_NeuN+_samples \
+  B_neg=Between_brain_regions_in_NeuN-_samples \
+  C_pos_vs_neg=Between_NeuN+_and_NeuN-_samples \
+  D_NAcc_pos_vs_BA9_pos=Between_NAcc_(NeuN+)_and_BA9_(NeuN+)_samples \
+  E_unsorted=Between_brain_regions_in_unsorted_samples \
+  F_NA=Not_applicable
+subGroup5 Smooth Smoothing_bandwidth \
+  A_small=Small \
+  B_large=Large
+dimensions dimX=Tissue dimY=NeuN dimA=Comparison dimB=Smooth
+filterComposite dimA
+filterComposite dimB
+sortOrder NeuN=+ Tissue=+ Comparison=+ Smooth=+ view=+
+type bed 3
+shortLabel WGBS (mCG)
+longLabel Average mCG in each condition and CG-DMRs
+priority 1
+html docs/WGBS
+
+  track DMRs
+  parent WGBS_mCG on
+  shortLabel CG-DMRs
+  longLabel Differentially methylated regions using CpGs (CG-DMRs)
+  view B_CG-DMR
+  visibility squish
+  type bigBed
+  viewUi on
+
+    track CG_DMRs.unsorted
+    parent DMRs off
+    subGroups NeuN=C_unsorted Tissue=F_NA Smooth=A_small Comparison=E_unsorted view=B_CG-DMR
+    bigDataUrl CG-DMRs.unsorted.bb
+    shortLabel CG-DMRs (bulk)
+    longLabel CG-DMRs between brain regions in unsorted samples
+    type bigBed
+
+    track CG_DMRs.pos_vs_neg
+    parent DMRs off
+    subGroups NeuN=E_NA Tissue=F_NA Smooth=A_small Comparison=C_pos_vs_neg view=B_CG-DMR
+    bigDataUrl CG-DMRs.pos_vs_neg.bb
+    shortLabel CG-DMRs (+ vs -)
+    longLabel CG-DMRs between NeuN+ and NeuN- samples
+    type bigBed
+
+    track CG_DMRs.pos
+    parent DMRs on
+    subGroups NeuN=A_pos Tissue=F_NA Smooth=A_small Comparison=A_pos view=B_CG-DMR
+    bigDataUrl CG-DMRs.pos.bb
+    shortLabel CG-DMRs (+)
+    longLabel CG-DMRs between brain regions in NeuN+ samples
+    type bigBed
+    priority 1
+
+    track CG_DMRs.NAcc_pos_vs_BA9_pos
+    parent DMRs off
+    subGroups NeuN=A_pos Tissue=F_NA Smooth=A_small Comparison=D_NAcc_pos_vs_BA9_pos view=B_CG-DMR
+    bigDataUrl CG-DMRs.NAcc_pos_vs_BA9_pos.bb
+    shortLabel DMRs (NAcc+BA9+)
+    longLabel CG-DMRs between NAcc (NeuN+) and BA9 (NeuN+) samples
+    type bigBed
+
+    track CG_DMRs.neg
+    parent DMRs off
+    subGroups NeuN=B_neg Tissue=F_NA Smooth=A_small Comparison=B_neg view=B_CG-DMR
+    bigDataUrl CG-DMRs.neg.bb
+    shortLabel CG-DMRs (-)
+    longLabel CG-DMRs between brain regions in NeuN- samples
+    type bigBed
+
+    track CG_blocks.pos_vs_neg
+    parent DMRs off
+    subGroups NeuN=E_NA Tissue=F_NA Smooth=B_large Comparison=C_pos_vs_neg view=B_CG-DMR
+    bigDataUrl CG-blocks.pos_vs_neg.bb
+    shortLabel CG-blocks (+vs-)
+    longLabel CG-blocks between NeuN+ and NeuN- samples
+    type bigBed
+
+    track CG_blocks.pos
+    parent DMRs off
+    subGroups NeuN=A_pos Tissue=F_NA Smooth=B_large Comparison=A_pos view=B_CG-DMR
+    bigDataUrl CG-blocks.pos.bb
+    shortLabel CG-blocks (+)
+    longLabel CG-blocks between brain regions in NeuN+ samples
+    type bigBed
+
+  track mCG
+  parent WGBS_mCG on
+  shortLabel mCG small smooth
+  longLabel Average mCG (small smooth) in each condition
+  view A_mCG
+  visibility full
+  type bigBed
+  viewUi on
+  viewLimits 0:1
+
+    track BA24_pos.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=A_pos Tissue=B_BA24 Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl BA24_pos.small_smooth.mCG.bw
+    shortLabel mCG small (BA24+)
+    longLabel Average mCG (small smooth) in BA24 (NeuN+) samples
+    type bigWig
+    color 255,20,147
+    maxHeightPixels 100:30:8
+
+    track BA9_pos.small_smooth.mCG
+    parent mCG on
+    subGroups NeuN=A_pos Tissue=A_BA9 Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl BA9_pos.small_smooth.mCG.bw
+    shortLabel mCG small (BA9+)
+    longLabel Average mCG (small smooth) in BA9 (NeuN+) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track HC_pos.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=A_pos Tissue=C_HC Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl HC_pos.small_smooth.mCG.bw
+    shortLabel mCG small (HC+)
+    longLabel Average mCG (small smooth) in HC (NeuN+) samples
+    type bigWig
+    color 169,169,169
+    maxHeightPixels 100:30:8
+
+    track NAcc_pos.small_smooth.mCG
+    parent mCG on
+    subGroups NeuN=A_pos Tissue=D_NAcc Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl NAcc_pos.small_smooth.mCG.bw
+    shortLabel mCG small (NAcc+)
+    longLabel Average mCG (small smooth) in NAcc (NeuN+) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+    track BA24_neg.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=B_neg Tissue=B_BA24 Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl BA24_neg.small_smooth.mCG.bw
+    shortLabel mCG small (BA24-)
+    longLabel Average mCG (small smooth) in BA24 (NeuN-) samples
+    type bigWig
+    color 255,20,147
+    maxHeightPixels 100:30:8
+
+    track BA9_neg.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=B_neg Tissue=A_BA9 Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl BA9_neg.small_smooth.mCG.bw
+    shortLabel mCG small (BA9-)
+    longLabel Average mCG (small smooth) in BA9 (NeuN-) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track HC_neg.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=B_neg Tissue=C_HC Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl HC_neg.small_smooth.mCG.bw
+    shortLabel mCG small (HC-)
+    longLabel Average mCG (small smooth) in HC (NeuN-) samples
+    type bigWig
+    color 169,169,169
+    maxHeightPixels 100:30:8
+
+    track NAcc_neg.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=B_neg Tissue=D_NAcc Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl NAcc_neg.small_smooth.mCG.bw
+    shortLabel mCG small (NAcc-)
+    longLabel Average mCG (small smooth) in NAcc (NeuN-) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+    track BA24_unsorted.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=C_unsorted Tissue=B_BA24 Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl BA24_unsorted.small_smooth.mCG.bw
+    shortLabel mCG small (BA24)
+    longLabel Average mCG (small smooth) in BA24 (unsorted) samples
+    type bigWig
+    color 255,20,147
+    maxHeightPixels 100:30:8
+
+    track BA9_unsorted.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=C_unsorted Tissue=A_BA9 Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl BA9_unsorted.small_smooth.mCG.bw
+    shortLabel mCG small (BA9)
+    longLabel Average mCG (small smooth) in BA9 (unsorted) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track HC_unsorted.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=C_unsorted Tissue=C_HC Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl HC_unsorted.small_smooth.mCG.bw
+    shortLabel mCG small (HC)
+    longLabel Average mCG (small smooth) in HC (unsorted) samples
+    type bigWig
+    color 169,169,169
+    maxHeightPixels 100:30:8
+
+    track NAcc_unsorted.small_smooth.mCG
+    parent mCG off
+    subGroups NeuN=C_unsorted Tissue=D_NAcc Smooth=A_small Comparison=F_NA view=A_mCG
+    bigDataUrl NAcc_unsorted.small_smooth.mCG.bw
+    shortLabel mCG small (NAcc)
+    longLabel Average mCG (small smooth) in NAcc (unsorted) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+    track BA24_pos.large_smooth.mCG
+    parent mCG off
+    subGroups NeuN=A_pos Tissue=B_BA24 Smooth=B_large Comparison=F_NA view=A_mCG
+    bigDataUrl BA24_pos.large_smooth.mCG.bw
+    shortLabel mCG large (BA24+)
+    longLabel Average mCG (large smooth) in BA24 (NeuN+) samples
+    type bigWig
+    color 255,20,147
+    maxHeightPixels 100:30:8
+
+    track BA9_pos.large_smooth.mCG
+    parent mCG off
+    subGroups NeuN=A_pos Tissue=A_BA9 Smooth=B_large Comparison=F_NA view=A_mCG
+    bigDataUrl BA9_pos.large_smooth.mCG.bw
+    shortLabel mCG large (BA9+)
+    longLabel Average mCG (large smooth) in BA9 (NeuN+) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track HC_pos.large_smooth.mCG
+    parent mCG off
+    subGroups NeuN=A_pos Tissue=C_HC Smooth=B_large Comparison=F_NA view=A_mCG
+    bigDataUrl HC_pos.large_smooth.mCG.bw
+    shortLabel mCG large (HC+)
+    longLabel Average mCG (large smooth) in HC (NeuN+) samples
+    type bigWig
+    color 169,169,169
+    maxHeightPixels 100:30:8
+
+    track NAcc_pos.large_smooth.mCG
+    parent mCG off
+    subGroups NeuN=A_pos Tissue=D_NAcc Smooth=B_large Comparison=F_NA view=A_mCG
+    bigDataUrl NAcc_pos.large_smooth.mCG.bw
+    shortLabel mCG large (NAcc+)
+    longLabel Average mCG (large smooth) in NAcc (NeuN+) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+    track BA24_neg.large_smooth.mCG
+    parent mCG off
+    subGroups NeuN=B_neg Tissue=B_BA24 Smooth=B_large Comparison=F_NA view=A_mCG
+    bigDataUrl BA24_neg.large_smooth.mCG.bw
+    shortLabel mCG large (BA24-)
+    longLabel Average mCG (large smooth) in BA24 (NeuN-) samples
+    type bigWig
+    color 255,20,147
+    maxHeightPixels 100:30:8
+
+    track BA9_neg.large_smooth.mCG
+    parent mCG off
+    subGroups NeuN=B_neg Tissue=A_BA9 Smooth=B_large Comparison=F_NA view=A_mCG
+    bigDataUrl BA9_neg.large_smooth.mCG.bw
+    shortLabel mCG large (BA9-)
+    longLabel Average mCG (large smooth) in BA9 (NeuN-) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track HC_neg.large_smooth.mCG
+    parent mCG off
+    subGroups NeuN=B_neg Tissue=C_HC Smooth=B_large Comparison=F_NA view=A_mCG
+    bigDataUrl HC_neg.large_smooth.mCG.bw
+    shortLabel mCG large (HC-)
+    longLabel Average mCG (large smooth) in HC (NeuN-) samples
+    type bigWig
+    color 169,169,169
+    maxHeightPixels 100:30:8
+
+    track NAcc_neg.large_smooth.mCG
+    parent mCG off
+    subGroups NeuN=B_neg Tissue=D_NAcc Smooth=B_large Comparison=F_NA view=A_mCG
+    bigDataUrl NAcc_neg.large_smooth.mCG.bw
+    shortLabel mCG large (NAcc-)
+    longLabel Average mCG (large smooth) in NAcc (NeuN-) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+### ============================================================================
+### mCA
+###
+
+track WGBS_mCA
+compositeTrack on
+visibility full
+# NOTE: "[A-Z]_" prefix on subGroup tags is to manually set sortOrder
+subGroup1 view Views \
+  A_mCA=mCA \
+  B_CA-DMR=Differentially_methylated_regions
+subGroup2 NeuN NeuN_status \
+  A_pos=NeuN+ \
+  B_neg=NeuN- \
+  C_unsorted=Unsorted \
+  D_union=Union \
+  E_NA=Not_applicable
+subGroup3 Tissue Brain_region \
+  A_BA9=Dorsolateral_prefrontal_cortex \
+  B_BA24=Anterior_cingulate_gyrus \
+  C_HC=Hippocampus \
+  D_NAcc=Nucleus_accumbens \
+  E_union=Union \
+  F_NA=Not_applicable
+subGroup4 Comparison Comparison \
+  A_pos=Between_brain_regions_in_NeuN+_samples \
+  B_neg=Between_brain_regions_in_NeuN-_samples \
+  C_pos_vs_neg=Between_NeuN+_and_NeuN-_samples \
+  D_NAcc_pos_vs_BA9_pos=Between_NAcc_(NeuN+)_and_BA9_(NeuN+)_samples \
+  E_unsorted=Between_brain_regions_in_unsorted_samples \
+  F_NA=Not_applicable
+dimensions dimX=Tissue dimY=NeuN dimA=Comparison
+filterComposite dimA
+sortOrder NeuN=+ Tissue=+ Comparison=+ view=+
+type bed 3
+shortLabel WGBS (mCA)
+longLabel Average mCA in each condition and CA-DMRs
+priority 2
+html docs/WGBS
+
+  track CA-DMRs
+  parent WGBS_mCA on
+  shortLabel CA-DMRs
+  longLabel Differentially methylated regions using CpAs (CA-DMRs)
+  view B_CA-DMR
+  visibility squish
+  type bigBed
+  viewUi on
+
+    track CA_DMRs
+    parent CA-DMRs on
+    subGroups NeuN=A_pos Tissue=F_NA Comparison=A_pos view=B_CA-DMR
+    bigDataUrl CA-DMRs.bb
+    shortLabel CA-DMRs (+)
+    longLabel CA-DMRs between brain regions in NeuN+ samples
+    type bigBed 6
+    colorByStrand 0,0,0 190,190,190
+    priority 2
+
+  track mCA
+  parent WGBS_mCA on
+  shortLabel mCA
+  longLabel Average mCA in each condition
+  view A_mCA
+  visibility full
+  type bigBed
+  viewUi on
+  # NOTE: viewLimits were chosen by trial and error. They happen to roughly
+  #       coincide with the 0.99 quantile of mCA in BA9_pos
+  viewLimits -0.25:0.25
+  yLineOnOff on
+  yLineMark 0
+  gridDefault on
+
+    track BA24_pos.mCA
+    parent mCA off
+    subGroups NeuN=A_pos Tissue=B_BA24 Comparison=F_NA view=A_mCA
+    bigDataUrl BA24_pos.mCA.bw
+    shortLabel mCA (BA24+)
+    longLabel Average mCA in BA24 (NeuN+) samples
+    type bigWig
+    color 255,20,147
+    maxHeightPixels 100:30:8
+
+    track BA9_pos.mCA
+    parent mCA on
+    subGroups NeuN=A_pos Tissue=A_BA9 Comparison=F_NA view=A_mCA
+    bigDataUrl BA9_pos.mCA.bw
+    shortLabel mCA (BA9+)
+    longLabel Average mCA in BA9 (NeuN+) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track HC_pos.mCA
+    parent mCA off
+    subGroups NeuN=A_pos Tissue=C_HC Comparison=F_NA view=A_mCA
+    bigDataUrl HC_pos.mCA.bw
+    shortLabel mCA (HC+)
+    longLabel Average mCA in HC (NeuN+) samples
+    type bigWig
+    color 169,169,169
+    maxHeightPixels 100:30:8
+
+    track NAcc_pos.mCA
+    parent mCA on
+    subGroups NeuN=A_pos Tissue=D_NAcc Comparison=F_NA view=A_mCA
+    bigDataUrl NAcc_pos.mCA.bw
+    shortLabel mCA (NAcc+)
+    longLabel Average mCA in NAcc (NeuN+) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8
+
+### ============================================================================
+### mCT
+###
+
+track WGBS_mCT
+compositeTrack off
+visibility hide
+# NOTE: "[A-Z]_" prefix on subGroup tags is to manually set sortOrder
+subGroup1 view Views \
+  A_mCT=mCT \
+  B_CT-DMR=Differentially_methylated_regions
+subGroup2 NeuN NeuN_status \
+  A_pos=NeuN+ \
+  B_neg=NeuN- \
+  C_unsorted=Unsorted \
+  D_union=Union \
+  E_NA=Not_applicable
+subGroup3 Tissue Brain_region \
+  A_BA9=Dorsolateral_prefrontal_cortex \
+  B_BA24=Anterior_cingulate_gyrus \
+  C_HC=Hippocampus \
+  D_NAcc=Nucleus_accumbens \
+  E_union=Union \
+  F_NA=Not_applicable
+subGroup4 Comparison Comparison \
+  A_pos=Between_brain_regions_in_NeuN+_samples \
+  B_neg=Between_brain_regions_in_NeuN-_samples \
+  C_pos_vs_neg=Between_NeuN+_and_NeuN-_samples \
+  D_NAcc_pos_vs_BA9_pos=Between_NAcc_(NeuN+)_and_BA9_(NeuN+)_samples \
+  E_unsorted=Between_brain_regions_in_unsorted_samples \
+  F_NA=Not_applicable
+dimensions dimX=Tissue dimY=NeuN dimA=Comparison
+filterComposite dimA
+sortOrder NeuN=+ Tissue=+ Comparison=+ view=+
+type bed 3
+shortLabel WGBS (mCT)
+longLabel Average mCT in each condition and CT-DMRs
+priority 3
+html docs/WGBS
+
+  track CT-DMRs
+  parent WGBS_mCT off
+  shortLabel CT-DMRs
+  longLabel Differentially methylated regions using CpTs (CT-DMRs)
+  view B_CT-DMR
+  visibility squish
+  type bigBed
+  viewUi on
+
+    track CT_DMRs
+    parent CT-DMRs off
+    subGroups NeuN=A_pos Tissue=F_NA Comparison=A_pos view=B_CT-DMR
+    bigDataUrl CT-DMRs.bb
+    shortLabel CT-DMRs (+)
+    longLabel CT-DMRs between brain regions in NeuN+ samples
+    type bigBed 6
+    colorByStrand 0,0,0 190,190,190
+    priority 2
+
+  track mCT
+  parent WGBS_mCT off
+  shortLabel mCT
+  longLabel Average mCT in each condition
+  view A_mCT
+  visibility full
+  type bigBed
+  viewUi on
+  # NOTE: viewLimits were chosen by trial and error. They happen to roughly
+  #       coincide with the 0.99 quantile of mCA in BA9_pos. This is
+  #       intentional to display mCA and mCT on the same scale.
+  viewLimits -0.25:0.25
+  yLineOnOff on
+  yLineMark 0
+  gridDefault on
+
+    track BA24_pos.mCT
+    parent mCT off
+    subGroups NeuN=A_pos Tissue=B_BA24 Comparison=F_NA view=A_mCT
+    bigDataUrl BA24_pos.mCT.bw
+    shortLabel mCT (BA24+)
+    longLabel Average mCT in BA24 (NeuN+) samples
+    type bigWig
+    color 255,20,147
+    maxHeightPixels 100:30:8
+
+    track BA9_pos.mCT
+    parent mCT on
+    subGroups NeuN=A_pos Tissue=A_BA9 Comparison=F_NA view=A_mCT
+    bigDataUrl BA9_pos.mCT.bw
+    shortLabel mCT (BA9+)
+    longLabel Average mCT in BA9 (NeuN+) samples
+    type bigWig
+    color 0,191,255
+    maxHeightPixels 100:30:8
+
+    track HC_pos.mCT
+    parent mCT off
+    subGroups NeuN=A_pos Tissue=C_HC Comparison=F_NA view=A_mCT
+    bigDataUrl HC_pos.mCT.bw
+    shortLabel mCT (HC+)
+    longLabel Average mCT in HC (NeuN+) samples
+    type bigWig
+    color 169,169,169
+    maxHeightPixels 100:30:8
+
+    track NAcc_pos.mCT
+    parent mCT on
+    subGroups NeuN=A_pos Tissue=D_NAcc Comparison=F_NA view=A_mCT
+    bigDataUrl NAcc_pos.mCT.bw
+    shortLabel mCT (NAcc+)
+    longLabel Average mCT in NAcc (NeuN+) samples
+    type bigWig
+    color 255,127,36
+    maxHeightPixels 100:30:8

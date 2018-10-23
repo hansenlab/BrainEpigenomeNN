@@ -1,0 +1,634 @@
+---
+title: "Analysis of DMRs and DARs over promoters and enhancers and their effect on gene expression"
+author: "Peter Hickey"
+date: "4 July 2017"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE, setup}
+knitr::opts_chunk$set(echo = FALSE, comment = "#>", collapse = TRUE, 
+                      message = FALSE, results = "hide", warning = FALSE)
+load("../objects/assays-and-features.rda")
+source("../scripts/functions.R")
+```
+
+```{r, message = FALSE, pkgs}
+library(GenomicRanges)
+library(rtracklayer)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(UpSetR)
+library(purrr)
+library(limma)
+library(tidyr)
+```
+
+```{r, functions}
+sameSign <- function(x, i) {
+  s <- sign(x[i])
+  if (length(s)) {
+    all(s == s[1])
+  } else {
+    TRUE
+  }
+}
+```
+
+# Abbreviations
+
+- `p`: promoter
+- `e`: enhancer
+- `peD`: pDMR or eDMR or pDAR or eDMR
+
+# Focusing on just promoters
+
+The analysis and store are simplified if we first focus on pDs
+
+## Interesting categories
+
+```{r}
+deg_pD <- rna_atac_meth %>%
+  filter(DE, 
+         sapply(pDMR, any) | sapply(pDAR, any))
+non_deg_pD <- rna_atac_meth %>%
+  filter(!DE,
+         sapply(pDMR, any) | sapply(pDAR, any))
+deg_no_pD <- rna_atac_meth %>%
+  filter(DE, 
+         !sapply(pDMR, any),
+         !sapply(pDAR, any))
+```
+
+- There are `r nrow(deg_pD) ` DEGs with a pD
+    - There are `r sum(deg_pD$npD > 1)` DEGs with > 1 pD
+- There are `r nrow(non_deg_pD)` non-DEGs with a pD
+    - There are `r sum(non_deg_pD$npD > 1)` non-DEGs with > 1 pD
+- There are `r nrow(deg_no_pD)` DEGs without a pD
+
+### DEGs with a pD
+
+Working backwards (most consistent -> least consistent), breaking down and exploring the inconsistent categories along the way
+
+```{r}
+# Are the pD *jointly* consistent and consistent with gene expression?
+deg_p_consistenty <- deg_pD %>%
+  mutate(ss = map2_lgl(
+    pmap(list(pLogFC, map(pMeanDiff, `-`), as.list(expLogFC)), c),
+    pmap(list(pDAR, pDMR, as.list(DE)), c),
+    sameSign)) %>%
+  select(gene, ss)
+
+# Those inconsistent genes with npD == 1
+tbl <- deg_pD %>%
+  filter(gene %in% (deg_p_consistenty %>% filter(!ss) %>% .$gene),
+         npD == 1)
+
+# Those inconsistent genes with npD > 1
+deg_p_consistenty_2 <- deg_pD %>%
+  filter(gene %in% (deg_p_consistenty %>% filter(!ss) %>% .$gene),
+         npD > 1) %>%
+  mutate(ss = map2_lgl(
+    map2(pLogFC, map(pMeanDiff, `-`), c),
+    map2(pDAR, pDMR, c),
+    sameSign)) %>%
+  select(gene, ss)
+```
+
+- `r sum(deg_p_consistenty$ss)` / `r nrow(deg_p_consistenty)` genes are *jointly* consistent in their pD and their gene expression
+    - `r nrow(tbl)` / `r sum(!deg_p_consistenty$ss)` of those inconsistent genes have `npD == 1`
+    - `r nrow(deg_p_consistenty_2)` of those inconsistent genes have `npD > 1`
+        - `r sum(deg_p_consistenty_2$ss)` / `r nrow(deg_p_consistenty_2)` of these genes are *jointly* consistent in pD
+        - We plot those remaining `r sum(!deg_p_consistenty_2$ss)` inconsistent genes 
+(see [`../figures/DEGs-inconsistent-pD.pdf`](../figures/DEGs-inconsistent-pD.pdf))
+
+```{r}
+pdf("../figures/DEGs-inconsistent-pD.pdf")
+deg_pD %>%
+  filter(gene %in% (deg_p_consistenty_2 %>% filter(!ss) %>% .$gene)) %>%
+  plotRAM()
+dev.off()
+```
+
+### Non-DEGs with a pD
+
+It is only interesting to check epigenetic consistency of those genes with 
+`npD > 1`. It's less interesting/meaningful to check consistency with gene 
+expression because these genes aren't differentially expressed and so the 
+directionality is fairly arbitrary/random
+
+```{r}
+# Are the pD *jointly* consistent and consistent with gene expression?
+non_deg_p_consistenty <- non_deg_pD %>%
+  mutate(ss = map2_lgl(
+    pmap(list(pLogFC, map(pMeanDiff, `-`), as.list(expLogFC)), c),
+    pmap(list(pDAR, pDMR, as.list(!DE)), c),
+    sameSign)) %>%
+  select(gene, ss)
+
+# Those inconsistent genes with npD == 1
+tbl <- non_deg_pD %>%
+  filter(gene %in% (non_deg_p_consistenty %>% filter(!ss) %>% .$gene),
+         npD == 1)
+
+# Those inconsistent genes with npD > 1
+non_deg_p_consistenty_2 <- non_deg_pD %>%
+  filter(gene %in% (non_deg_p_consistenty %>% filter(!ss) %>% .$gene),
+         npD > 1) %>%
+  mutate(ss = map2_lgl(
+    map2(pLogFC, map(pMeanDiff, `-`), c),
+    map2(pDAR, pDMR, c),
+    sameSign)) %>%
+  select(gene, ss)
+```
+
+- `r sum(non_deg_p_consistenty$ss)` / `r nrow(non_deg_p_consistenty)` genes are *jointly* consistent in their pD and their gene expression
+    - `r nrow(tbl)` / `r sum(!non_deg_p_consistenty$ss)` of those inconsistent genes have `npD == 1`
+    - `r nrow(non_deg_p_consistenty_2)` / `r sum(!non_deg_p_consistenty$ss)` of those inconsistent genes have `npD > 1`
+        - `r sum(non_deg_p_consistenty_2$ss)` / `r nrow(non_deg_p_consistenty_2)` of these genes are *jointly* consistent in their epigenetic marks
+        - We plot those remaining `r sum(!non_deg_p_consistenty_2$ss)` inconsistent genes 
+(see [`../figures/non-DEGs-inconsistent-pD.pdf`](../figures/non-DEGs-inconsistent-pD.pdf))
+
+```{r}
+pdf("../figures/non-DEGs-inconsistent-pD.pdf")
+non_deg_pD %>%
+  filter(gene %in% (non_deg_p_consistenty_2 %>% filter(!ss) %>% .$gene)) %>%
+  plotRAM()
+dev.off()
+```
+
+# Do DEGs with no pD have an 'active' promoter?
+
+```{r}
+deg_no_pD_has_p_atac_peak <- overlapsAny(promoters_by_gene[deg_no_pD$gene],
+                                         ocrs_overall)
+```
+
+- `r sum(deg_no_pD_has_p_atac_peak)` / `r nrow(deg_no_pD)` of these genes have an OCR in a promoter ('active' promoter)
+
+# Does an eD explain DEGs without pD?
+
+```{r}
+active_fantom5_enhancers_by_gene_all_genes <- 
+  fantom5_enhancers_by_gene_all_genes[relist(unlist(
+    fantom5_enhancers_by_gene_all_genes)$active,
+    fantom5_enhancers_by_gene_all_genes)]
+deg_names_with_active_enhancers <- 
+  intersect(deg_names, names(active_fantom5_enhancers_by_gene_all_genes[
+    lengths(active_fantom5_enhancers_by_gene_all_genes) > 0]))
+deg_names_with_enhancers <- 
+  intersect(deg_names, names(fantom5_enhancers_by_gene_all_genes[
+    lengths(fantom5_enhancers_by_gene_all_genes) > 0]))
+```
+
+- There are `r nrow(deg_no_pD)` DEGs without a pD
+    - `r sum(lengths(fantom5_enhancers_by_gene_all_genes[deg_no_pD$gene]) > 0)` of these `r nrow(deg_no_pD)` have at least one TSS-associated FANTOM5 enhancer
+        - `r sum(lengths(active_fantom5_enhancers_by_gene_all_genes[deg_no_pD$gene]) > 0)` of these `r sum(lengths(fantom5_enhancers_by_gene_all_genes[deg_no_pD$gene]) > 0)` have at least one 'active' enhancer (i.e. overlap an ATAC-seq peak)
+
+## Interesting categories
+
+```{r}
+deg_no_pD_E <- filter(deg_no_pD, (gene %in% deg_names_with_enhancers))
+deg_no_pD_no_E <- filter(deg_no_pD, !(gene %in% deg_names_with_enhancers))
+deg_no_pD_no_eD <- deg_no_pD %>%
+  filter(gene %in% deg_names_with_enhancers,
+         !sapply(eDMR, any),
+         !sapply(eDAR, any))
+deg_no_pD_eD <- deg_no_pD %>%
+  filter(gene %in% deg_names_with_enhancers,
+         sapply(eDMR, any) | sapply(eDAR, any))
+```
+
+- There are `r nrow(deg_no_pD_E)` DEGs without a pD but with a linked enhancer
+    - `r nrow(deg_no_pD_eD)` / `r nrow(deg_no_pD_E)` have a eD
+        - `r sum(deg_no_pD_eD$neD > 1)` / `r nrow(deg_no_pD_eD)` have `neD > 1`
+    - `r nrow(deg_no_pD_no_eD)` / `r nrow(deg_no_pD_E)` of these have no eD
+- There are `r nrow(deg_no_pD_no_E)` DEGs without a pD or linked enhancer
+
+## DEGs with no pD but with eD
+
+```{r}
+# Are the eD *jointly* consistent and consistent with gene expression?
+deg_no_pD_eD_consistenty <- deg_no_pD_eD %>%
+  filter(gene %in% deg_names_with_enhancers) %>%
+  mutate(ss = map2_lgl(
+    pmap(list(eLogFC, map(eMeanDiff, `-`), as.list(expLogFC)), c),
+    pmap(list(eDAR, eDMR, as.list(DE)), c),
+    sameSign)) %>%
+  select(gene, ss)
+
+# Those inconsistent genes with neD == 1
+tbl <- deg_no_pD_eD %>%
+  filter(gene %in% (deg_no_pD_eD_consistenty %>% filter(!ss) %>% .$gene),
+         neD == 1)
+
+# Those inconsistent genes with neD > 1
+deg_no_pD_eD_consistenty_2 <- deg_no_pD_eD %>%
+  filter(gene %in% (deg_no_pD_eD_consistenty %>% filter(!ss) %>% .$gene),
+         neD > 1) %>%
+  mutate(ss = map2_lgl(
+    map2(eLogFC, map(eMeanDiff, `-`), c),
+    map2(eDAR, eDMR, c),
+    sameSign)) %>%
+  select(gene, ss)
+```
+
+- `r sum(deg_no_pD_eD_consistenty$ss)` / `r nrow(deg_no_pD_eD_consistenty)` genes are *jointly* consistent in their eD and their gene expression
+    - `r nrow(tbl)` / `r sum(!deg_no_pD_eD_consistenty$ss)` of those inconsistent genes have `neD == 1`
+    - `r nrow(deg_no_pD_eD_consistenty_2)` / `r sum(!deg_no_pD_eD_consistenty$ss)` of those inconsistent genes have `neD > 1`
+        - `r sum(deg_no_pD_eD_consistenty_2$ss)` / `r nrow(deg_no_pD_eD_consistenty_2)` of these inconsistent genes are *jointly* consistent in eD
+        - We plot those remaining `r sum(!deg_no_pD_eD_consistenty_2$ss)` inconsistent genes 
+(see [`../figures/DEGs-no-pD-inconsistent-eD.pdf`](../figures/DEGs-no-pD-inconsistent-eD.pdf))
+
+```{r}
+pdf("../figures/DEGs-no-pD-inconsistent-eD.pdf")
+deg_no_pD_eD %>%
+  filter(gene %in% (deg_no_pD_eD_consistenty_2 %>% filter(!ss) %>% .$gene)) %>%
+  plotRAM()
+dev.off()
+```
+
+# Promoter status of DEGs with no PD
+
+## CGI-promoter status
+
+- `r sum(!deg_no_pD$gene %in% unlist(unique(cgi_promoters$GENEID)))` / 
+`r nrow(deg_no_pD)` DEGs with no pD don't have a CGI-promoter
+
+## Open promoter status
+
+- `r sum(!overlapsAny(promoters_by_gene[deg_no_pD$gene], ocrs_overall))` / `r nrow(deg_no_pD)` DEGs with no pD don't have an ATAC-seq peak in the promoter
+
+# Genes per enhancer
+
+- Number of genes per enhancer
+
+```{r, results = "asis"}
+quantile(countOverlaps(unique(unlist(fantom5_enhancers_by_gene)), 
+                       unlist(fantom5_enhancers_by_gene), type = "equal"), 
+         0:10 / 10)
+
+quantile(countOverlaps(unique(unlist(promoters_by_gene)), 
+                       unlist(promoters_by_gene), type = "equal"), 
+         0:10 / 10)
+```
+
+# Are eDMR/eDAR linked to more genes that pDMR/pDAR?
+
+Only considering genes with both promoters and enhancer links
+
+```{r}
+eDAR <- subsetByOverlaps(dars_pos, fantom5_enhancers_by_gene)
+eDMR <- subsetByOverlaps(dmrs_NAvsBA9pos, fantom5_enhancers_by_gene)
+pDAR <- subsetByOverlaps(dars_pos, promoters_by_gene[names(fantom5_enhancers_by_gene)])
+pDMR <- subsetByOverlaps(dmrs_NAvsBA9pos, promoters_by_gene[names(fantom5_enhancers_by_gene)])
+```
+
+## Number of promoters/enhancers hit per DMR/DAR
+
+```{r}
+eDAR_co <- countOverlaps(eDAR, unique(unlist(fantom5_enhancers_by_gene)))
+pDAR_co <- countOverlaps(pDAR, unique(unlist(promoters_by_gene[names(fantom5_enhancers_by_gene)])))
+eDMR_co <- countOverlaps(eDMR, unique(unlist(fantom5_enhancers_by_gene)))                       
+pDMR_co <- countOverlaps(pDMR, unique(unlist(promoters_by_gene[names(fantom5_enhancers_by_gene)])))  
+
+boxplot(list(eDAR_co, pDAR_co, eDMR_co, pDMR_co), 
+        names = c("eDAR", "pDAR", "eDMR", "pDMR"), 
+        main = "Number of promoters/enhancers hit")
+```
+
+- More promoters than enhancers are hit per DMR/DAR because promoters overlap more than enhancers
+
+## Number of linked genes per eDMR/eDAR/pDMR/pDAR
+
+```{r}
+eDAR_g <- countOverlaps(eDAR, fantom5_enhancers_by_gene)
+pDAR_g <- countOverlaps(pDAR, promoters_by_gene[names(fantom5_enhancers_by_gene)])
+eDMR_g <- countOverlaps(eDMR, fantom5_enhancers_by_gene)                       
+pDMR_g <- countOverlaps(pDMR, promoters_by_gene[names(fantom5_enhancers_by_gene)])  
+
+boxplot(list(eDAR_g, pDAR_g, eDMR_g, pDMR_g), 
+        names = c("eDAR", "pDAR", "eDMR", "pDMR"), 
+        main = "Number of linked genes")
+```
+
+- However, more genes are linked to each eDMR/eDAR than pDMR/pDAR because enhancers link to multiple genes more often than do promoters
+
+# Promoters and enhancers
+
+```{r}
+expressed_genes_with_enhancer <- intersect(rna_seq_de_pos$gene_level$gene_id,
+                                           tssa_enhancer_pairs$GENCODEGeneID)
+
+degs_with_enhancer <- intersect(deg_names, 
+                                tssa_enhancer_pairs$GENCODEGeneID)
+```
+
+- `r length(expressed_genes_with_enhancer)` / `r length(rna_seq_de_pos$gene_level)` expressed genes are linked to at least one FANTOM5 enhancer
+- `r length(degs_with_enhancer)` / `r length(deg_names)` DEGs are linked to at least one FANTOM5 enhancer
+
+## Interesting categories
+
+```{r}
+deg_no_peD <- rna_atac_meth %>%
+  filter(DE, 
+         !sapply(pDMR, any),
+         !sapply(pDAR, any),
+         !sapply(eDMR, any),
+         !sapply(eDAR, any))
+non_deg_peD <- rna_atac_meth %>%
+  filter(!DE,
+         sapply(pDMR, any) | sapply(pDAR, any) | 
+           sapply(eDMR, any) | sapply(eDAR, any))
+deg_peD <- rna_atac_meth %>%
+  filter(DE, 
+         sapply(pDMR, any) | sapply(pDAR, any) | 
+           sapply(eDMR, any) | sapply(eDAR, any))
+```
+
+- There are `r nrow(deg_peD) ` DEGs with a peD
+    - There are `r sum(deg_pD$npeD > 1)` DEGs with > 1 peD
+- There are `r nrow(non_deg_peD)` non-DEGs with a peD
+    - There are `r sum(non_deg_peD$npeD > 1)` non-DEGs with > 1 peD
+- There are `r nrow(deg_no_peD)` DEGs without a peD
+
+### DEGs with a peD
+
+Working backwards (most consistent -> least consistent), breaking down and exploring the inconsistent categories along the way
+
+```{r}
+# Are the peD *jointly* consistent and consistent with gene expression?
+deg_pe_consistenty <- deg_peD %>%
+  mutate(ss = map2_lgl(
+    pmap(list(pLogFC, eLogFC, map(map2(pMeanDiff, eMeanDiff, c), `-`),
+              as.list(expLogFC)), c),
+    pmap(list(pDAR, eDAR, pDMR, eDMR, as.list(DE)), c),
+    sameSign)) %>%
+  select(gene, ss)
+
+# Those inconsistent genes with npeD == 1
+tbl <- deg_peD %>%
+  filter(gene %in% (deg_pe_consistenty %>% filter(!ss) %>% .$gene),
+         npeD == 1)
+
+# Those inconsistent genes with npeD > 1
+deg_pe_consistenty_2 <- deg_peD %>%
+  filter(gene %in% (deg_pe_consistenty %>% filter(!ss) %>% .$gene),
+         npeD > 1) %>%
+  mutate(ss = map2_lgl(
+    pmap(list(pLogFC, eLogFC, map(map2(pMeanDiff, eMeanDiff, c), `-`)), c),
+    pmap(list(pDAR, eDAR, pDMR, eDMR), c),
+    sameSign)) %>%
+  select(gene, ss)
+```
+
+- `r sum(deg_pe_consistenty$ss)` / `r nrow(deg_pe_consistenty)` genes are *jointly* consistent in their pD and their gene expression
+    - `r nrow(tbl)` / `r sum(!deg_pe_consistenty$ss)` of those inconsistent genes have `npeD == 1`
+    - `r nrow(deg_pe_consistenty_2)` / `r sum(!deg_pe_consistenty$ss)` of those inconsistent genes have `neD > 1`
+        - `r sum(deg_pe_consistenty_2$ss)` / `r nrow(deg_pe_consistenty_2)` of these DEGs are *jointly* consistent in peD
+        - The remaining `r sum(!deg_pe_consistenty_2$ss)` inconsistent DEGs include those `r sum(!deg_p_consistenty_2$ss)` genes with inconsistent pDs (at least, if they have an enhancer). We plot the `r sum(!deg_pe_consistenty_2$ss) - sum(!deg_p_consistenty_2$ss)` 'new' DEGs found by also examining eDs (see 
+[`../figures/DEGs-inconsistent-peD.pdf`](../figures/DEGs-inconsistent-peD.pdf))
+
+```{r}
+pdf("../figures/DEGs-inconsistent-peD.pdf")
+deg_peD %>%
+  filter(gene %in% (setdiff(deg_pe_consistenty_2, deg_p_consistenty_2) %>% 
+                      filter(!ss) %>% .$gene)) %>%
+  plotRAM()
+dev.off()
+```
+
+## Non-DEGs with a peD
+
+It is only interesting to check epigenetic consistency of those genes with 
+`npeD > 1`. It's less interesting/meaningful to check consistency with gene 
+expression because these genes aren't differentially expressed and so the 
+directionality is fairly arbitrary/random
+
+```{r}
+# Are the peD *jointly* consistent and consistent with gene expression?
+non_deg_pe_consistenty <- non_deg_peD %>%
+  mutate(ss = map2_lgl(
+    pmap(list(pLogFC, eLogFC, map(map2(pMeanDiff, eMeanDiff, c), `-`),
+              as.list(expLogFC)), c),
+    pmap(list(pDAR, eDAR, pDMR, eDMR, as.list(DE)), c),
+    sameSign)) %>%
+  select(gene, ss)
+
+# Those inconsistent genes with npeD == 1
+tbl <- non_deg_peD %>%
+  filter(gene %in% (non_deg_pe_consistenty %>% filter(!ss) %>% .$gene),
+         npeD == 1)
+
+# Those inconsistent genes with npeD > 1
+non_deg_pe_consistenty_2 <- non_deg_peD %>%
+  filter(gene %in% (non_deg_pe_consistenty %>% filter(!ss) %>% .$gene),
+         npeD > 1) %>%
+  mutate(ss = map2_lgl(
+    pmap(list(pLogFC, eLogFC, map(map2(pMeanDiff, eMeanDiff, c), `-`)), c),
+    pmap(list(pDAR, eDAR, pDMR, eDMR), c),
+    sameSign)) %>%
+  select(gene, ss)
+```
+
+- `r sum(non_deg_pe_consistenty$ss)` / `r nrow(non_deg_pe_consistenty)` non-DEGs are *jointly* consistent in their peD and their gene expression
+    - `r nrow(tbl)` / `r sum(!non_deg_pe_consistenty$ss)` of those inconsistent genes have `npD == 1`
+    - `r nrow(non_deg_pe_consistenty_2)` / `r sum(!non_deg_pe_consistenty$ss)` of those inconsistent genes have `neD > 1`
+        - `r sum(non_deg_pe_consistenty_2$ss)` / `r nrow(non_deg_pe_consistenty_2)` of these genes are *jointly* consistent in their epigenetic marks
+        - The remaining `r sum(!non_deg_pe_consistenty_2$ss)` inconsistent genes include those `r sum(!non_deg_p_consistenty_2$ss)` genes with inconsistent pDs (at least, if they have an enhancer). We plot the  `r sum(!non_deg_pe_consistenty_2$ss) - sum(!non_deg_p_consistenty_2$ss)` 'new' genes found by also examining enhancer epigenetic marks (see [`../figures/non-DEGs-inconsistent-peD.pdf`](../figures/non-DEGs-inconsistent-peD.pdf))
+
+```{r}
+pdf("../figures/non-DEGs-inconsistent-peD.pdf")
+non_deg_peD %>%
+  filter(gene %in% 
+           (setdiff(non_deg_pe_consistenty_2,  non_deg_p_consistenty_2) %>% 
+              filter(!ss) %>% .$gene)) %>%
+  plotRAM()
+dev.off()
+```
+
+### DEGs with no peD
+
+```{r}
+deg_no_peD_has_pe_atac_peak <- overlapsAny(promoters_by_gene[deg_no_peD$gene],
+                                           ocrs_overall)
+```
+
+- `r sum(deg_no_peD_has_pe_atac_peak)` / `r nrow(deg_no_peD)` of these genes have an ATAC-seq peak in a promoter or enhancer
+
+
+# Venn diagrams and upset plots
+
+Some example summary figures
+
+## Crazy 5-way Venn diagram
+
+```{r}
+rna_atac_meth %>%
+  mutate(pDMR = map_lgl(pDMR, any),
+         pDAR = map_lgl(pDAR, any),
+         eDMR = map_lgl(eDMR, any),
+         eDAR = map_lgl(eDAR, any)) %>%
+  select(DE, pDMR, pDAR, eDMR, eDAR) %>%
+  vennDiagram(main = "Expressed genes")
+```
+
+## Upset plot of all expressed genes
+
+```{r}
+rna_atac_meth %>%
+  mutate(Dconsistent = map2_int(
+           pmap(list(pLogFC, eLogFC, 
+                     map(map2(pMeanDiff, eMeanDiff, c), `-`)), c),
+           pmap(list(pDAR, eDAR, pDMR, eDMR), c),
+           sameSign),
+         Dinconsistent = as.integer(!Dconsistent),
+         pDMR = map_int(pDMR, any),
+         pDAR = map_int(pDAR, any),
+         eDMR = map_int(eDMR, any),
+         eDAR = map_int(eDAR, any),
+         `no-D` = map2_int(pDMR, pDAR, ~ sum(.x, .y) == 0),
+         DE = as.integer(DE),
+         `Non-DE` = as.integer(!DE)) %>%
+  select(DE, `Non-DE`, pDMR, pDAR, eDMR, eDAR, `no-D`, Dconsistent, Dinconsistent) %>%
+  as.data.frame() %>%
+  upset(nsets = 100)
+```
+
+## Upset plot of all DEGs with npeD > 1
+
+```{r}
+rna_atac_meth %>%
+  filter(npeD > 1,
+         DE) %>%
+  mutate(consistent = map2_int(
+           pmap(list(pLogFC, eLogFC, map(map2(pMeanDiff, eMeanDiff, c), `-`),
+                     as.list(expLogFC)), c),
+           pmap(list(pDAR, eDAR, pDMR, eDMR, as.list(DE)), c),
+           sameSign),
+         inconsistent = as.integer(!consistent),
+         Dconsistent = map2_int(
+           pmap(list(pLogFC, eLogFC, map(map2(pMeanDiff, eMeanDiff, c), `-`)), c),
+           pmap(list(pDAR, eDAR, pDMR, eDMR), c),
+           sameSign),
+         Dinconsistent = as.integer(!Dconsistent),
+         pDMR = map_int(pDMR, any),
+         pDAR = map_int(pDAR, any),
+         eDMR = map_int(eDMR, any),
+         eDAR = map_int(eDAR, any),
+         `no-D` = map2_int(pDMR, pDAR, ~ sum(.x, .y) == 0),
+         CnotD = as.integer(xor(consistent, Dconsistent))) %>%
+  select(pDMR, pDAR, eDMR, eDAR, `no-D`, consistent, inconsistent, CnotD) %>%
+  as.data.frame() %>%
+  upset(nsets = 100)
+```
+
+# Is an enhancer active in our samples?
+
+- Q: Can we identify a subset of active enhancers in our cells by looking for overlap of FANTOM5 enhancers and OCRs?
+    - A: There are `r sum(overlapsAny(tssa_enhancer_pairs, ocrs_overall))` (TSS-associated enhancer, gene)-pairs with an ATAC-seq peak over the enhancer
+- Q: How many genes have at least 1 enhancer with an ATAC-seq peak?
+    - A: There are `r sum(overlapsAny(fantom5_enhancers_by_gene, ocrs_overall))` genes with at least 1 enhancer with an ATAC-seq peak
+        - `r length(intersect(names(subsetByOverlaps(fantom5_enhancers_by_gene_all_genes, ocrs_overall)), rna_seq_de_pos$gene_level$gene_id))` / `r sum(overlapsAny(fantom5_enhancers_by_gene, ocrs_overall))` are expressed genes
+        - `r length(intersect(names(subsetByOverlaps(fantom5_enhancers_by_gene_all_genes[deg_names], ocrs_overall)), rna_seq_de_pos$gene_level$gene_id))` / `r sum(overlapsAny(fantom5_enhancers_by_gene, ocrs_overall))` are DEGs
+
+# Does the number of (consistent) pD, eD, or peD predict DEG-status?
+
+Take all expressed genes with consistent pD, eD, or peD and cross-tabulate 
+npD, neD, or npeD with DE-status. Note, all genes with `npeD < 2` are 
+automatically peD consistent, for example.
+
+## pD
+
+```{r, results = "markup"}
+p_consistency_tbl <- rna_atac_meth %>%
+  mutate(ss = map2_lgl(
+    pmap(list(pLogFC, map(pMeanDiff, `-`), as.list(expLogFC)), c),
+    pmap(list(pDAR, pDMR, as.list(DE)), c),
+    sameSign)) %>%
+  filter(ss) %>%
+  select(gene, npD, DE) %>%
+  group_by(npD, DE) %>%
+  summarise(n = n()) %>%
+  tidyr::spread(DE, n, fill = 0L) %>%
+  rename(`Not DE` = `FALSE`, DE = `TRUE`)
+p_consistency_tbl
+```
+
+As percentages:
+
+```{r, results = "markup"}
+p_consistency_tbl %>%
+  ungroup() %>%
+  mutate(`Not DE` = round(100 * `Not DE` / sum(`Not DE`), 2),
+         DE = round(100 * DE / sum(DE), 2))
+```
+
+## eD
+
+```{r, results = "markup"}
+e_consistency_tbl <- rna_atac_meth %>%
+  mutate(ss = map2_lgl(
+    pmap(list(eLogFC, map(eMeanDiff, `-`), as.list(expLogFC)), c),
+    pmap(list(eDAR, eDMR, as.list(DE)), c),
+    sameSign)) %>%
+  filter(ss) %>%
+  select(gene, neD, DE) %>%
+  group_by(neD, DE) %>%
+  summarise(n = n()) %>%
+  tidyr::spread(DE, n, fill = 0L) %>%
+  rename(`Not DE` = `FALSE`, DE = `TRUE`)
+e_consistency_tbl
+```
+
+As percentages:
+
+```{r, results = "markup"}
+e_consistency_tbl %>%
+  ungroup() %>%
+  mutate(`Not DE` = round(100 * `Not DE` / sum(`Not DE`), 2),
+         DE = round(100 * DE / sum(DE), 2))
+```
+
+## peD
+
+```{r, results = "markup"}
+pe_consistency_tbl <- rna_atac_meth %>%
+  mutate(ss = map2_lgl(
+    pmap(list(pLogFC, eLogFC, map(map2(pMeanDiff, eMeanDiff, c), `-`),
+              as.list(expLogFC)), c),
+    pmap(list(pDAR, eDAR, pDMR, eDMR, as.list(DE)), c),
+    sameSign)) %>%
+  filter(ss) %>%
+  select(gene, npD, neD, npeD, DE) %>%
+  group_by(npeD, DE) %>%
+  summarise(n = n()) %>%
+  tidyr::spread(DE, n, fill = 0L) %>%
+  rename(`Not DE` = `FALSE`, DE = `TRUE`)
+pe_consistency_tbl
+```
+
+As percentages:
+
+```{r, results = "markup"}
+pe_consistency_tbl %>%
+  ungroup() %>%
+  mutate(`Not DE` = round(100 * `Not DE` / sum(`Not DE`), 2),
+         DE = round(100 * DE / sum(DE), 2))
+```
+
+## Summary
+
+- Some discriminatory power when looking at pD or peD
+- Little discriminatory power when looking at eD
+
+# Questions
+
+- [ ] Q: Is it worth trying to track down the 'cause' in the case of the small number of DEGs with inconsistent peD (let alone those non-DEGs with inconsistent peDe)?
+    - [ ] Identify DMR/DAR that results in a peD(s) with the 'incorrect' sign and see if these can be assigned to a peD with the 'correct' sign
+- [ ] Q: Use all enhancers or all 'active' enhancers?

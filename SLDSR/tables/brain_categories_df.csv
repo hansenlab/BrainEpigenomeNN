@@ -1,0 +1,34 @@
+Category,Pretty Category,Source,Differential
+NAcc_pos_OCRs,OCRs (NAcc NeuN+),NeuN+,FALSE
+NAcc_neg_OCRs,OCRs (NAcc NeuN-),NeuN-,FALSE
+BA9_pos_OCRs,OCRs (BA9 NeuN+),NeuN+,FALSE
+BA9_neg_OCRs,OCRs (BA9 NeuN-),NeuN-,FALSE
+POS_non-DARs_sameN,"Non-DARs (NeuN+, sameN)",NeuN+ & NeuN-,FALSE
+POS_non-DARs_sameWidth,"Non-DARs (NeuN+, sameWidth)",NeuN+ & NeuN-,FALSE
+POSvsNEG_non-DARs_sameN,"Non-DARs (NeuN+ vs. NeuN-, sameN)",NeuN+ & NeuN-,FALSE
+POSvsNEG_non-DARs_sameWidth,"Non-DARs (NeuN+ vs. NeuN-, sameWidth)",NeuN+ & NeuN-,FALSE
+POS_CG-DMRs,CG-DMRs (NeuN+),NeuN+,TRUE
+POSvsNEG_CG-DMRs,CG-DMRs (NeuN+ vs. NeuN-),NeuN+ & NeuN-,TRUE
+POS_CG-blocks,CG-blocks (NeuN+),NeuN+,TRUE
+POSvsNEG_CG-blocks,CG-blocks (NeuN+ vs. NeuN-),NeuN+ & NeuN-,TRUE
+POS_DARs,DARs (NeuN+),NeuN+,TRUE
+POS_bigDARs,bigDARs (NeuN+),NeuN+,TRUE
+POSvsNEG_DARs,DARs (NeuN+ vs. NeuN-),NeuN+ & NeuN-,TRUE
+POSvsNEG_bigDARs,bigDARs (NeuN+ vs. NeuN-),NeuN+ & NeuN-,TRUE
+H3K27ac,Brain H3K27ac,Other,FALSE
+Brain_promoters,Brain promoters,Other,FALSE
+AH46921,chromHMM (E068),Other,FALSE
+AH46922,chromHMM (E069),Other,FALSE
+AH46924,chromHMM (E071),Other,FALSE
+AH46926,chromHMM (E073),Other,FALSE
+chromHMM_union,chromHMM (union),Other,FALSE
+Luo_small_CG-DMRs,"CG-DMRs (NeuN+, Luo)",NeuN+,TRUE
+Lister_CG-DMRs,"CG-DMRs (NeuN vs. NeuN-, Lister)",NeuN+ & NeuN-,TRUE
+CH-DMRs,CH-DMRs (NeuN+),NeuN+,TRUE
+Luo_small_CG-DMRs_sameN,"CG-DMRs (NeuN+, Luo, sameN)",NeuN+,TRUE
+Luo_small_CG-DMRs_sameWidth,"CG-DMRs (NeuN+, Luo, sameWidth)",NeuN+,TRUE
+Lister_CG-DMRs_sameN,"CG-DMRs (NeuN vs. NeuN-, Lister, sameN)",NeuN+ & NeuN-,TRUE
+Lister_CG-DMRs_sameWidth,"CG-DMRs (NeuN vs. NeuN-, Lister, sameWidth)",NeuN+ & NeuN-,TRUE
+CNS,CNS (LDSC),Other,FALSE
+overall_OCRs,OCRs (overall),NeuN+ & NeuN-,FALSE
+POS_CG-DMRs_union_POS_bigDARs,CG-DMRs & DARs (NeuN+),NeuN+,TRUE

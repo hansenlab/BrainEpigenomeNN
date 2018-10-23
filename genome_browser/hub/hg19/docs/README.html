@@ -1,0 +1,42 @@
+<h2 id="description">Description</h2>
+<p>These tracks show results from genome-wide analyses of DNA methylation, chromatin accessibility, and gene expression data from 15 human brain donors [<a href="https://www.biorxiv.org/content/early/2017/03/24/120386">1</a>].</p>
+<p>We performed:</p>
+<ul>
+<li><strong>W</strong>hole <strong>G</strong>enome <strong>B</strong>isulfite <strong>S</strong>equencing (WGBS, n = 72)</li>
+<li><strong>A</strong>ssay for <strong>T</strong>ransposase-<strong>A</strong>ccessible <strong>C</strong>hromatin using sequencing (ATAC-seq, n = 22)</li>
+<li>RNA sequencing (RNA-seq, n = 20)</li>
+</ul>
+<p>Data come from 4 brain regions:</p>
+<ul>
+<li>Dorsolateral prefrontal cortex (BA9)</li>
+<li>Anterior cingulate gyrus (BA24)</li>
+<li>Hippocampus (HC)</li>
+<li>Nucleus accumbens (NAcc)</li>
+</ul>
+<p>and 2 &#8216;cell types&#8217; and bulk tissue:</p>
+<ul>
+<li>NeuN+ cells isolated using fluourescence activated nuclei sorting (NeuN+)</li>
+<li>NeuN- cells isolated using fluourescence activated nuclei sorting (NeuN-)</li>
+<li>Bulk tissue (Unsorted)</li>
+</ul>
+<p><img src="https://s3.us-east-2.amazonaws.com/brainepigenome/img/individual-level_dataset_matrix.png" alt="Individual-level dataset matrix" style="width: 600px;"/></p>
+<p><img src="https://s3.us-east-2.amazonaws.com/brainepigenome/img/condition-level_dataset_matrix.png" alt="Condition-level dataset matrix" style="width: 600px;"/></p>
+<h2 id="methods">Methods</h2>
+<p>Methods for each assay are described in the following documents:</p>
+<ul>
+<li><a href="https://s3.us-east-2.amazonaws.com/brainepigenome/hg19/docs/WGBS.html"><strong>W</strong>hole <strong>G</strong>enome <strong>B</strong>isulfite <strong>S</strong>equencing (WGBS)</a></li>
+<li><a href="https://s3.us-east-2.amazonaws.com/brainepigenome/hg19/docs/ATAC-seq.html"><strong>A</strong>ssay for <strong>T</strong>ransposase-<strong>A</strong>ccessible <strong>C</strong>hromatin using sequencing (ATAC-seq)</a></li>
+<li><a href="https://s3.us-east-2.amazonaws.com/brainepigenome/hg19/docs/RNA-seq.html">RNA sequencing (RNA-seq)</a></li>
+</ul>
+<p>Please refer to [<a href="https://www.biorxiv.org/content/early/2017/03/24/120386">1</a>] for further details.</p>
+<h2 id="caveats">Caveats</h2>
+<p>Methylation and coverage tracks do not incorporate biological variability. Visually inferring regions of differential methylation, differential accessibility, or differential expression from these tracks alone is not recommended. Instead, information across all samples should be used to identify these regions and analysed with statistical methods that account for biological variability (see &#8216;Data Access&#8217;, below).</p>
+<h2 id="data-access">Data Access</h2>
+<p>Raw and processed data generated during this study will be made available on the Gene Expression Omnibus (<a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE96615">GSE96615</a>) upon publication. We recommend that these data are used for any downstream statistical analyses.</p>
+<p>The raw data for these tracks can be explored interactively using the <a href="http://genome.ucsc.edu/cgi-bin/hgTables">Table Browser</a> or <a href="http://genome.ucsc.edu/cgi-bin/hgIntegrator">Data Integrator</a>. The tables can also be downloaded from our downloads server for local processing; the exact filenames can be found in the <a href="https://s3.us-east-2.amazonaws.com/brainepigenome/hg19/trackDb.txt">track configuration file</a> under the <code>bigDataUrl</code> field. To download a track, append the <code>bigDataUrl</code> to the base URL of <a href="https://s3.us-east-2.amazonaws.com/brainepigenome/hg19/" class="uri">https://s3.us-east-2.amazonaws.com/brainepigenome/hg19/</a> For example, the track &#8216;Average mCG (small smooth) in BA9 (NeuN+) samples&#8217; has <code>bigDataUrl</code> of <code>BA9_pos.small_smooth.mCG.bw</code> and can be downloaded from <a href="https://s3.us-east-2.amazonaws.com/brainepigenome/hg19/BA9_pos.small_smooth.mCG.bw" class="uri">https://s3.us-east-2.amazonaws.com/brainepigenome/hg19/BA9_pos.small_smooth.mCG.bw</a>.</p>
+<h2 id="credits">Credits</h2>
+<p>Questions should be directed to <a href="mailto:peter.hickey@gmail.com">Peter Hickey</a>.</p>
+<h2 id="references">References</h2>
+<ol type="1">
+<li><a href="https://www.biorxiv.org/content/early/2017/03/24/120386">Rizzardi, L. et al.&#160;Neuronal brain region-specific DNA methylation and chromatin accessibility are associated with neuropsychiatric disease heritability. bioRxiv 120386 (2017). doi:10.1101/120386</a></li>
+</ol>

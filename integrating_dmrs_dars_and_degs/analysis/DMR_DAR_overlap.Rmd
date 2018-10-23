@@ -1,0 +1,583 @@
+---
+title: "Overlap of DMRs and DARs"
+author: "Peter Hickey"
+date: "4 July 2017"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE, setup}
+knitr::opts_chunk$set(echo = FALSE, comment = "#>", collapse = TRUE, 
+                      message = FALSE, results = "hide", warning = FALSE)
+load("../objects/assays-and-features.rda")
+source("../scripts/functions.R")
+```
+
+```{r, message = FALSE, pkgs}
+library(GenomicRanges)
+library(rtracklayer)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(UpSetR)
+```
+
+# Do DMRs and DARs overlap?
+
+- Are DMRs and DARs identifying the same or different regions of the genome?
+- If different, how different?
+
+## DMRs
+
+```{r}
+big_dars_pos <- dars_pos[abs(dars_pos$logFC) > 1]
+non_dars_pos <- subsetByOverlaps(ocrs_overall, dars_pos, invert = TRUE)
+x <- makeUpSetRList(dmrs_NAvsBA9pos, 
+                    list("bigDARs" = big_dars_pos,
+                         "DARs" = dars_pos,
+                         "non-DARs" = non_dars_pos,
+                         "Other" = gaps(c(dars_pos, 
+                                          non_dars_pos,
+                                          ignore.mcols = TRUE))))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+- Most DMRs overlap an OCR (union) 
+    - `r round(100 * sum(overlapsAny(dmrs_NAvsBA9pos, ocrs_overall)) / length(dmrs_NAvsBA9pos), 0)`% overlap
+- Only half of DMRs overlap a DAR 
+    - `r round(100 * sum(overlapsAny(dmrs_NAvsBA9pos, dars_pos)) / length(dmrs_NAvsBA9pos), 0)`% overlap
+- Only a minor of DMRs overlap a bigDAR (|logFC| > 1)
+    - `r round(100 * sum(overlapsAny(dmrs_NAvsBA9pos, big_dars_pos)) / length(dmrs_NAvsBA9pos), 0)`% overlap
+
+## bigDMRs
+
+```{r}
+x <- makeUpSetRList(big_dmrs_NAvsBA9pos,
+                    list("DARs" = dars_pos,
+                         "non-DARs" = non_dars_pos,
+                         "Other" = gaps(c(dars_pos, non_dars_pos, 
+                                          ignore.mcols = TRUE))))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+- Most bigDMRs overlap an OCR (union) (`r round(100 * sum(overlapsAny(big_dmrs_NAvsBA9pos, ocrs_overall)) / length(big_dmrs_NAvsBA9pos), 0)`% overlap)
+- Most bigDMRs overlap a DAR (`r round(100 * sum(overlapsAny(big_dmrs_NAvsBA9pos, dars_pos)) / length(big_dmrs_NAvsBA9pos), 0)`% overlap)
+
+## OCRs
+
+```{r}
+x <- makeUpSetRList(ocrs_overall, list("DMRs" = dmrs_NAvsBA9pos,
+                                       "non-DMRs" = non_dmrs_NAvsBA9pos))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+- Most OCRs don't overlap a DMR (`r round(100 * sum(overlapsAny(ocrs_overall, dmrs_NAvsBA9pos)) / length(ocrs_overall), 0)`% overlap)
+
+## DARs
+
+```{r}
+x <- makeUpSetRList(dars_pos, list("DMRs" = dmrs_NAvsBA9pos,
+                                   "non-DMRs" = non_dmrs_NAvsBA9pos))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+- Most DARs don't overlap a DMR (`r round(100 * sum(overlapsAny(dars_pos, dmrs_NAvsBA9pos)) / length(dars_pos), 0)`% overlap)
+
+## bigDARs
+
+```{r}
+x <- makeUpSetRList(big_dars_pos, list("DMRs" = dmrs_NAvsBA9pos,
+                                       "non-DMRs" = non_dmrs_NAvsBA9pos))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+- Most bigDARs don't overlap a DMR (`r round(100 * sum(overlapsAny(big_dars_pos, dmrs_NAvsBA9pos)) / length(big_dars_pos), 0)`% overlap)
+
+# How close are DMRs and DARs?
+
+Observed DARs near boundaries of DMRs in a few examples; how common is this?
+
+- Compute `distanceToNearest()` for DMRs and DARs
+
+**NOTE:** Add 1 to distance to avoid taking log(0) (occurs when `x` is inside 
+`subject`)
+
+```{r}
+d_dmr <- mcols(distanceToNearest(dmrs_NAvsBA9pos, dars_pos))$distance
+d_dar <- mcols(distanceToNearest(dars_pos, dmrs_NAvsBA9pos))$distance
+d_dmr_self <- mcols(distanceToNearest(dmrs_NAvsBA9pos))$distance
+d_dar_self <- mcols(distanceToNearest(dars_pos))$distance
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(2, 2))
+
+hist(log10(d_dmr + 1), 
+     xlab = "log10(Distance)", 
+     main = "Distance (bp) to nearest DAR for each DMR",
+     xlim = c(0, 7), 
+     breaks = seq(-.1, 7, 0.1),
+     freq = FALSE,
+     ylim = c(0, 2.5))
+
+hist(log10(d_dar + 1), 
+     xlab = "log10(Distance)", 
+     main = "Distance (bp) to nearest DMR for each DAR", 
+     xlim = c(0, 7), 
+     breaks = seq(-.1, 7, 0.1),
+     freq = FALSE, 
+     ylim = c(0, 2.5))
+
+hist(log10(d_dmr_self + 1), 
+     xlab = "log10(Distance)", 
+     main = "Distance (bp) to next DMR for each DMR",
+     xlim = c(0, 7),
+     breaks = seq(-.1, 7, 0.1),
+     freq = FALSE, 
+     ylim = c(0, 2.5))
+
+hist(log10(d_dar_self + 1), 
+     xlab = "log10(Distance)", 
+     main = "Distance (bp) to next DAR for each DAR", 
+     xlim = c(0, 7),
+     breaks = seq(-.1, 7, 0.1),
+     freq = FALSE,
+     ylim = c(0, 2.5))
+
+par(op)
+```
+
+- Spike at 0 in upper panel corresponds to DMRs and DARs overlapping
+
+## Exclude overlapping features
+
+Repeat the above, but excluding DARs (resp. DMRs) that are entirely within a DMR (resp. DAR).
+
+```{r}
+op <- par(no.readonly = TRUE)
+par(mfrow = c(2, 2))
+
+hist(log10(d_dmr[d_dmr > 0]), 
+     xlab = "log10(Distance)", 
+     main = "Distance (bp) to nearest DAR for each DMR",
+     xlim = c(0, 7), 
+     breaks = seq(-.1, 7, 0.1),
+     freq = FALSE,
+     ylim = c(0, 0.8))
+
+hist(log10(d_dar[d_dar > 0]), 
+     xlab = "log10(Distance)", 
+     main = "Distance (bp) to nearest DMR for each DAR", 
+     xlim = c(0, 7), 
+     breaks = seq(-.1, 7, 0.1),
+     freq = FALSE,
+     ylim = c(0, 0.8))
+
+hist(log10(d_dmr_self[d_dmr_self > 0]), 
+     xlab = "log10(Distance)", 
+     main = "Distance (bp) to next DMR for each DMR",
+     xlim = c(0, 7),
+     breaks = seq(-.1, 7, 0.1), 
+     freq = FALSE,
+     ylim = c(0, 0.8))
+
+hist(log10(d_dar_self[d_dar_self > 0]), 
+     xlab = "log10(Distance)", 
+     main = "Distance (bp) to next DAR for each DAR", 
+     xlim = c(0, 7),
+     breaks = seq(-.1, 7, 0.1),
+     freq = FALSE,
+     ylim = c(0, 0.8))
+
+par(op)
+```
+
+- Once overlapping features are excluded, the distributions aren't so different when going from a DMR to the nearest DMR or DAR (compare top panel to bottom panel)
+- Slight exception for DARs, which are more often within a short distance of another DAR
+
+## Separating 'internal' from 'overlapping'
+
+Is there a preference for DMRs that overlap a DAR to have an 'internal' or 
+'overlapping' DAR.
+
+- Take summit of DARs that overlap DMRs and see if there is a bias for the peak to be centered within the DMR or outside the DMR
+
+```{r}
+widths <- c(1, seq(50, 1000, 50))
+widths <- setNames(widths, widths)
+sum(countSubjectHits(findOverlaps(resize(dars_pos, 1, "center"), 
+                                  subsetByOverlaps(dmrs_NAvsBA9pos, dars_pos), 
+                                  type = "within")) > 0)
+```
+
+- Of the minority that do overlap a DAR, the majority contain the summit of the DAR (`r paste0(sum(countSubjectHits(findOverlaps(resize(dars_pos, 1, "center"), subsetByOverlaps(dmrs_NAvsBA9pos, dars_pos), type = "within")) > 0), " / ", sum(overlapsAny(dmrs_NAvsBA9pos, dars_pos)))`)
+
+# Distance to nearest DAR for DMRs that don't overlap a DAR
+
+## First way
+
+```{r}
+d <- mcols(distanceToNearest(
+  subsetByOverlaps(dmrs_NAvsBA9pos, dars_pos, invert = TRUE), 
+  dars_pos))[["distance"]]
+boxplot(d / 10 ^ 3,
+        main = "Distance to next DAR for DMRs that don't overlap a DAR",
+        ylab = "Distance (kb)", 
+        ylim = c(0, 10 ^ 3),
+        sub = paste0("y-axis truncated at 1000 kb = 1 Mb (max = ", 
+                     round(max(d / 10 ^ 6), 1), " Mb)"))
+
+d <- mcols(distanceToNearest(
+  subsetByOverlaps(dmrs_NAvsBA9pos_cpgs, dars_pos, invert = TRUE), 
+  dars_pos))[["distance"]]
+boxplot(d / 10 ^ 3,
+        main = "Distance to next DAR for DMR-CpGs that don't overlap a DAR",
+        ylab = "Distance (kb)", 
+        ylim = c(0, 10 ^ 3),
+        sub = paste0("y-axis truncated at 1000 kb = 1 Mb (max = ", 
+                     round(max(d / 10 ^ 6), 1), " Mb)"))
+
+d <- mcols(distanceToNearest(
+  subsetByOverlaps(dars_pos, dmrs_NAvsBA9pos, invert = TRUE), 
+  dmrs_NAvsBA9pos))[["distance"]]
+boxplot(d / 10 ^ 3,
+        main = "Distance to next DMR for DARs that don't overlap a DMR",
+        ylab = "Distance (kb)", 
+        ylim = c(0, 10 ^ 3),
+        sub = paste0("y-axis truncated at 1000 kb = 1 Mb (max = ", 
+                     round(max(d / 10 ^ 6), 1), " Mb)"))
+
+```
+
+## Second way
+
+```{r}
+joint <- reduce(c(granges(dmrs_NAvsBA9pos), granges(dars_pos)))
+seqinfo(joint) <- seqinfo(gencode_features$union$genic)
+pads <- c(0, 1000, 5000, 10000, 20000, 50000, 100000, 500000, 1000000)
+pads <- setNames(pads, pads)
+
+# What percentage of regions have 0 DMRs or 0 DARs?
+t(sapply(pads, function(pad) {
+  rr_joint <- suppressWarnings(reduce(resize(joint, width = width(joint) + 2 * pad, fix = "center")))
+  rr_joint <- trim(rr_joint)
+  dmr <- 100 * sum(countOverlaps(rr_joint, dmrs_NAvsBA9pos) == 0) / length(rr_joint)
+  dar <- 100 * sum(countOverlaps(rr_joint, dars_pos) == 0) / length(rr_joint)
+  c("dmr" = dmr, "dar" = dar)
+}))
+
+# What is the median number of DMRs and DARs per region
+t(sapply(pads, function(pad) {
+  rr_joint <- suppressWarnings(reduce(resize(joint, width = width(joint) + 2 * pad, fix = "center")))
+  rr_joint <- trim(rr_joint)
+  dmr <- median(countOverlaps(rr_joint, dmrs_NAvsBA9pos))
+  dar <- median(countOverlaps(rr_joint, dars_pos))
+  c("dmr" = dmr, "dar" = dar)
+}))
+
+# What does the distribution of c(DMRs, DARs) look like per region
+t(sapply(pads, function(pad) {
+  rr_joint <- suppressWarnings(reduce(resize(joint, width = width(joint) + 2 * pad, fix = "center")))
+  rr_joint <- trim(rr_joint)
+  x <- countOverlaps(rr_joint, c(granges(dmrs_NAvsBA9pos), granges(dars_pos)))
+  data_frame("X>1" = sum(x > 1),
+             "X>2" = sum(x > 2),
+             "X>3" = sum(x > 3),
+             "X>4" = sum(x > 4),
+             "median(X | X > 1)" = median(x[x > 1]),
+             "q95(X)" = quantile(x, 0.95),
+             "q99(X)" = quantile(x, 0.99),
+             "max(X)" = max(x),
+             "n" = length(x),
+             "Mb" = sum(as.numeric(width(rr_joint))) / 10 ^ 6)
+}))
+
+i <- c(seq(0, 900, 50), seq(1000, 9500, 500), seq(10000, 95000, 5000))
+a <- bind_rows(lapply(i, function(pad) {
+  rr_joint <- suppressWarnings(reduce(resize(joint, width = width(joint) + 2 * pad, fix = "center")))
+  rr_joint <- trim(rr_joint)
+  x <- countOverlaps(rr_joint, c(granges(dmrs_NAvsBA9pos), granges(dars_pos)))
+  data_frame("pad" = pad,
+             "X>1" = sum(x > 1),
+             "X>2" = sum(x > 2),
+             "median(X | X > 1)" = median(x[x > 1]),
+             "q95(X)" = quantile(x, 0.95),
+             "q99(X)" = quantile(x, 0.99),
+             "max(X)" = max(x),
+             "n" = length(x),
+             "Mb" = sum(as.numeric(width(rr_joint))) / 10 ^ 6)
+}))
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(2, 4))
+lapply(seq_len(ncol(a))[-1], function(j) {
+ plot(i, unlist(a[, j]), main = colnames(a)[j], type = "b", xlab = "Pad", 
+      ylab = "stat") 
+})
+par(op)
+
+# Plot max(X) zooming in and at a higher resolution
+i <- c(seq(0, 20000, 100), seq(30000, 95000, 5000))
+b <- sapply(i, function(pad) {
+  rr_joint <- suppressWarnings(reduce(resize(joint, width = width(joint) + 2 * pad, fix = "center")))
+  rr_joint <- trim(rr_joint)
+  x <- countOverlaps(rr_joint, c(granges(dmrs_NAvsBA9pos), granges(dars_pos)))
+  max(x)
+})
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 2))
+plot(i, b, type = "s", xlab = "Pad", ylab = "max(X)", ylim = c(0, 130))
+abline(v = 20000, col = "red")
+plot(i, b, type = "s", xlab = "Pad", ylab = "max(X)", xlim = c(0, 10000), 
+     ylim = c(0, 130), pch = 16)
+par(op)
+```
+
+- The maximum number DMRs/DARs is a 'spiky' statistic since it's an extreme value of the distribution. All other stats shown are smooth
+  - Can we use this to find 'hotspots' of the genome?
+    - Spikes at +/- 500 bp and +/- 6100 bp
+
+```{r}
+rr_joint <- reduce(resize(joint, width = width(joint) + 2 * 500, fix = "center"))
+ol <- findOverlaps(rr_joint, c(granges(dmrs_NAvsBA9pos), granges(dars_pos)))
+z <- rr_joint[which.max(countQueryHits(ol))]
+z
+```
+
+The region with the maximum number of hits, 
+`r as.character(z)`, contains the gene 
+*SIX3*, which "is crucial in embryonic development for the foremation of the 
+forebrain and eye development ... Activity of SIX3 gene represses Wnt1 gene 
+actiity" (https://en.wikipedia.org/wiki/SIX3). In fact, the region contains 
+multiple DEGs, in addition to the multiple DARs and DMRs (which exist via 
+construction).
+
+Take all regions +/- 5kb with > 4 hits, `dmr_dar_clusters`
+
+```{r}
+rr_joint <- reduce(resize(joint, width = width(joint) + 2 * 5000, fix = "center"))
+ol <- findOverlaps(rr_joint, c(granges(dmrs_NAvsBA9pos), granges(dars_pos)))
+dmr_dar_clusters <- rr_joint[countQueryHits(ol) > 4]
+saveRDS(dmr_dar_clusters, "../objects/dmr_dar_clusters.rds")
+```
+
+```{r}
+subsetByOverlaps(rna_seq_de_pos$gene_level, z)
+```
+
+Of course, a large number of DMRs/DARs in a region might really be an 
+indication that the boundaries of these DMRs/DARs were poorly defined to begin 
+with.
+
+## Summary
+
+- DMRs tend to overlap DARs, but DARs don't tend to overlap DMRs
+- DMRs and DARs do not tend to overlap
+- The majority (`r 100 - round(100 * sum(overlapsAny(dmrs_NAvsBA9pos, dars_pos)) / length(dmrs_NAvsBA9pos), 0)`%) of DMRs do overlap a DAR
+- A minority ((`r round(100 * sum(overlapsAny(dmrs_NAvsBA9pos, big_dars_pos)) / length(dmrs_NAvsBA9pos), 0)`%) of DMRs overlap a big DAR (|logFC| > 1)
+- The median distance to the nearest DAR for DMRs that don't overlap a DAR is `r round(median(mcols(distanceToNearest(subsetByOverlaps(dmrs_NAvsBA9pos, dars_pos, invert = TRUE), dars_pos))[["distance"]]) / 1000, 0)` kb
+- The median distance to the nearest DAR for DMR-CpGs that don't overlap a DAR is `r round(median(mcols(distanceToNearest(subsetByOverlaps(dmrs_NAvsBA9pos_cpgs, dars_pos, invert = TRUE), dars_pos))[["distance"]]) / 1000, 0)` kb
+- The median distance to the nearest DMR for DARs that don't overlap a DMR is `r round(median(mcols(distanceToNearest(subsetByOverlaps(dars_pos, dmrs_NAvsBA9pos, invert = TRUE), dmrs_NAvsBA9pos))[["distance"]]) / 1000, 0)` kb
+
+# DMR enrichment/depletion of ATAC peaks, DARs, and bigDARs
+
+We consider enrichment of:
+
+1. Peaks vs. rest of genome
+2. DARS vs. rest of genome
+    a. bigDARs vs. rest of genome
+3. DARs vs. null-peaks
+    a. bigDARs vs. null-peaks
+
+We consider two different ways to calculate enrichment using ATAC-seq data:
+
+A. Counting peaks (only 3, 4)
+B. Counting bases (1, 2, 3, 4)
+
+## Counting peaks
+
+### DARs vs. null-peaks
+
+```{r}
+null_peaks <- non_dars_pos
+or_dars_pos_vs_null_dmrs <- 
+  cbind(FT(dars_pos, null_peaks,
+           list("DMRs (NApos vs. BA9_pos)" = dmrs_NAvsBA9pos), 
+           "DMRs (NApos vs. BA9pos)"),
+        data.frame(source = factor("DAR", 
+                                   c("DAR", 
+                                     "bigDAR"))))
+or_big_dars_pos_vs_null_dmrs <- 
+  cbind(FT(big_dars_pos, null_peaks, 
+           list("DMRs (NApos vs. BA9_pos)" = dmrs_NAvsBA9pos), 
+           "DMRs (NApos vs. BA9pos)"),
+        data.frame(source = factor("bigDAR", 
+                                   c("DAR", 
+                                     "bigDAR"))))
+
+ggplot(rbind(or_dars_pos_vs_null_dmrs, or_big_dars_pos_vs_null_dmrs),
+       aes(x = source, y = log2(estimate))) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ feature) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. null-peaks") +
+  ylab("log2(OR) with 95% CI")
+```
+
+## Counting bases
+
+### Peaks vs. rest of genome
+
+```{r}
+or_bp_peaks_dmrs <- cbind(
+  FT2(ocrs_overall, list("DMRs (NApos vs. BA9_pos)" = dmrs_NAvsBA9pos), 
+      "DMRs (NApos vs. BA9_pos)", sl),
+  data.frame(source = "peaks"))
+ggplot(or_bp_peaks_dmrs,
+       aes(x = source, y = log2(estimate))) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ feature) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("Peaks vs. rest of genome (bp)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+### DARs vs. rest of genome
+
+```{r}
+or_bp_dars_pos_dmrs <- 
+  cbind(FT2(dars_pos, list("DMRs (NApos vs. BA9_pos)" = dmrs_NAvsBA9pos), 
+            "DMRs (NApos vs. BA9_pos)", sl),
+  data.frame(source = "DARs"))
+or_bp_big_dars_pos_dmrs <- 
+  cbind(FT2(big_dars_pos, list("DMRs (NApos vs. BA9_pos)" = dmrs_NAvsBA9pos), 
+            "DMRs (NApos vs. BA9_pos)", sl),
+  data.frame(source = "bigDARs"))
+ggplot(rbind(or_bp_dars_pos_dmrs, or_bp_big_dars_pos_dmrs),
+       aes(x = source, y = log2(estimate))) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ feature) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. rest of genome (bp)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+### DARs vs. null peaks
+
+```{r}
+or_bp_dars_pos_vs_null_dmrs <- cbind(
+  FT3(dars_pos, null_peaks,
+      list("DMRs (NApos vs. BA9_pos)" = dmrs_NAvsBA9pos), 
+      "DMRs (NApos vs. BA9_pos)"),
+  data.frame(source = factor("DARs", c("DARs", "bigDARs"))))
+or_bp_big_dars_pos_vs_null_dmrs <- cbind(
+  FT3(big_dars_pos, null_peaks,
+      list("DMRs (NApos vs. BA9_pos)" = dmrs_NAvsBA9pos), 
+      "DMRs (NApos vs. BA9_pos)"),
+  data.frame(source = factor("bigDARs", c("DARs", "bigDARs"))))
+ggplot(rbind(or_bp_dars_pos_vs_null_dmrs, or_bp_big_dars_pos_vs_null_dmrs),
+       aes(x = source, y = log2(estimate))) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ feature) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. null-peaks (bp)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+# Enrichment of DARs that overlap DMRs
+
+## chromHMM
+
+```{r}
+cols <- c("E068" = "chocolate1", "E069" = "deeppink", "E071" = "darkgrey", 
+          "E073" = "deepskyblue")
+
+dars_pos_with_dmr <- subsetByOverlaps(dars_pos, dmrs_NAvsBA9pos)
+dars_pos_without_dmr <- subsetByOverlaps(dars_pos, dmrs_NAvsBA9pos, invert = TRUE)
+
+or_bp_dars_pos_with_dmrs_vs_dars_pos_without_dmrs_AH46921 <- 
+  FT3(dars_pos_with_dmr, dars_pos_without_dmr, AH46921, "E068")
+or_bp_dars_pos_with_dmrs_vs_dars_pos_without_dmrs_AH46922 <- 
+  FT3(dars_pos_with_dmr, dars_pos_without_dmr, AH46922, "E069")
+or_bp_dars_pos_with_dmrs_vs_dars_pos_without_dmrs_AH46924 <- 
+  FT3(dars_pos_with_dmr, dars_pos_without_dmr, AH46924, "E071")
+or_bp_dars_pos_with_dmrs_vs_dars_pos_without_dmrs_AH46926 <- 
+  FT3(dars_pos_with_dmr, dars_pos_without_dmr, AH46926, "E073")
+
+ggplot(rbind(or_bp_dars_pos_with_dmrs_vs_dars_pos_without_dmrs_AH46921,
+             or_bp_dars_pos_with_dmrs_vs_dars_pos_without_dmrs_AH46922,
+             or_bp_dars_pos_with_dmrs_vs_dars_pos_without_dmrs_AH46924,
+             or_bp_dars_pos_with_dmrs_vs_dars_pos_without_dmrs_AH46926), 
+       aes(x = feature, y = log2(estimate), col = db)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DARs with DMRs vs. DARs without DMRs (bp)") +
+  ylab("log2(OR) with 95% CI") + 
+  scale_colour_manual(values = cols)
+```
+
+## CpGs
+
+Unsurprisingly, DARs that overlap a DMR are slightly enriched for covered CpGs compared to DARs that do not overlap a DMR (log2(OR) = `r round(log2(FT3(dars_pos_with_dmr, dars_pos_without_dmr, list(cpgs = cpgs), "Covered CpGs")$estimate), 1)`)
+
+# Enrichment of DMR-CpGs within DARs
+
+Compare `intersect(dmrs_NAvsBA9pos_cpgs, dars_pos)` to 
+`setdiff(dmrs_NAvsBA9pos_cpgs, dars_pos)`
+
+```{r}
+intersection <- GenomicRanges::intersect(dmrs_NAvsBA9pos_cpgs, dars_pos)
+setdiff <- GenomicRanges::setdiff(dmrs_NAvsBA9pos_cpgs, dars_pos)
+```
+
+## GENCODE
+
+Mostly interested in whether enrichment in promoters
+
+```{r}
+or_gencode <- cbind(
+  rbind(FT(intersection, setdiff, gencode_features$union, "union"),
+        FT(intersection, setdiff, gencode_features$pc_transcripts, "PC"),
+        FT(intersection, setdiff, gencode_features$lnc_transcripts, "lncRNA")),
+  data.frame(source = "DMR-CpGs within DARs"))
+
+ggplot(or_gencode, aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_wrap(~ source, ncol = 2) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("All genes") +
+  ylab("log2(OR) with 95% CI")
+```
+
+## Enhancers
+
+```{r}
+or_enhancers <- cbind(
+  FT(intersection, setdiff, unlinked_enhancers, 
+     c("Vermunt", "FANTOM5", "FANTOM5+Vermunt")),
+  data.frame(source = "DMR-CpGs within DARs"))
+ggplot(or_enhancers, 
+       aes(x = feature, y = log2(estimate), col = db)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_wrap(~ source, ncol = 2) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("All genes") +
+  ylab("log2(OR) with 95% CI")
+```

@@ -1,0 +1,1536 @@
+---
+title: "Correlations of DARs and DMRs with DEGs"
+author: "Peter Hickey"
+date: "04 July 2017"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE, setup}
+knitr::opts_chunk$set(echo = FALSE, comment = "#>", collapse = TRUE, 
+                      message = FALSE, results = "hide", warning = FALSE)
+load("../objects/assays-and-features.rda")
+source("../scripts/functions.R")
+```
+
+```{r, message = FALSE, pkgs}
+library(GenomicRanges)
+library(rtracklayer)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(UpSetR)
+```
+
+# Overview
+
+- Are DEGs associated with DMRs and/or DARs in:
+    - Promoters
+    - Enhancers
+- Type of association:
+    - Co-occurence (i.e. presence/absence)
+    - Correlations (i.e. logFC vs. meanDiff for WGBS and logFC vs. logFC for ATAC-seq)
+    
+We use `dmrs_NAvsBA9pos` because we are specifically interested in relating DMRs, DARs, and DEGs for this comparison.
+
+Recall that `fantom5_enhancers_by_gene` only includes TSS-associated enhancers 
+for TSSs of protein-coding genes in GENCODE v19.
+
+# Promoters per gene
+
+- Genes have multiple transcripts and therefore multiple promoters
+    - PC genes: median = `r median(lengths(promoters_by_gene_pc))` (min = `r min(lengths(promoters_by_gene_pc))`, max = `r max(lengths(promoters_by_gene_pc))`)
+    - lncRNA genes: `r median(lengths(promoters_by_gene_lnc))` (min = `r min(lengths(promoters_by_gene_lnc))`, max = `r max(lengths(promoters_by_gene_lnc))`)
+- From [GENCODE.md](GENCODE.md), `r sum(overlapsAny(dmrs_pos, gencode_features$union$promoter))` of the `r length(dmrs_NAvsBA9pos)` `dmrs_NAvsBA9pos` overlap at least one promoter
+- _A priori_, some genes more likely to have a DMR because of containing a CGI (and also likely also a shore)
+    - `r length(cgi_promoters_by_gene_pc)` of the `r length(promoters_by_gene_pc)` PC genes and `r length(cgi_promoters_by_gene_lnc)` of the `r length(promoters_by_gene_lnc)` have at least one CGI-promoter
+
+# Enhancers per gene
+
+- Genes may have multiple enhancers (using `fantom5_enhancers_by_gene`)
+- **Unlike promoters, enhancers may be linked to multiple genes**
+    - median = `r median(countOverlaps(unique(tssa_enhancer_pairs), tssa_enhancer_pairs))` (min = `r min(countOverlaps(unique(tssa_enhancer_pairs), tssa_enhancer_pairs))`, max = `r max(countOverlaps(unique(tssa_enhancer_pairs), tssa_enhancer_pairs))`) genes per enhancer (`tssa_enhancer_pairs`)
+- From [GENCODE.md](GENCODE.md), `r sum(overlapsAny(dmrs_NAvsBA9pos, brain_permissive_enhancers))` of the `r length(dmrs_NAvsBA9pos)` `dmrs_NAvsBA9pos` overlap at least one enhancer (`brain_permissive_enhancers`)
+
+# pDMRs
+
+- Dogma is that a methylated promoter leads to repression of that transcript
+- Empirically, this is crude (scatterplot isn't great)
+- Instead, focus on expression of genes with pDMRs (promoter DMRs)
+
+## Co-occurence
+
+- Cross-tabulate whether a gene has a pDMR and is differentially expressed
+
+```{r}
+tested <- names(promoters_by_gene) %in% rna_seq_de_pos$gene_level$gene_id
+tested_pc <- names(promoters_by_gene_pc) %in% rna_seq_de_pos$gene_level$gene_id
+tested_lnc <- names(promoters_by_gene_lnc) %in% rna_seq_de_pos$gene_level$gene_id
+tmp_pc <- data.frame(pDMR = overlapsAny(promoters_by_gene_pc[tested_pc],
+                                        dmrs_NAvsBA9pos),
+                     DEG = names(promoters_by_gene_pc[tested_pc]) %in% 
+                       deg_names)
+xt_pc <- xtabs(~ pDMR + DEG, tmp_pc)
+rownames(xt_pc) <- c("no-pDMR", "pDMR")
+colnames(xt_pc) <- c("non-DEG", "DEG")
+
+tmp_lnc <- data.frame(pDMR = overlapsAny(promoters_by_gene_lnc[tested_lnc],
+                                         dmrs_NAvsBA9pos),
+                      DEG = names(promoters_by_gene_lnc[tested_lnc]) %in% 
+                        deg_names)
+xt_lnc <- xtabs(~ pDMR + DEG, tmp_lnc)
+rownames(xt_lnc) <- c("no-pDMR", "pDMR")
+colnames(xt_lnc) <- c("non-DEG", "DEG")
+
+tmp <- data.frame(pDMR = overlapsAny(promoters_by_gene[tested], 
+                                     dmrs_NAvsBA9pos),
+                  DEG = names(promoters_by_gene[tested]) %in% deg_names)
+xt <- xtabs(~ pDMR + DEG, tmp)
+rownames(xt) <- c("no-pDMR", "pDMR")
+colnames(xt) <- c("non-DEG", "DEG")
+```
+
+### PC genes
+
+`r knitr::kable(xt_pc)`
+
+- OR = `r round(fisher.test(xt_pc)$estimate, 1)` (`r round(fisher.test(xt_pc)$conf.int, 1)`)
+
+### lncRNA genes
+
+`r knitr::kable(xt_lnc)`
+
+- OR = `r round(fisher.test(xt_lnc)$estimate, 1)` (`r round(fisher.test(xt_lnc)$conf.int, 1)`)
+
+### Summary
+
+- DEGs and pDMRs co-occur
+
+## Correlation
+
+- Take all genes with a pDMR and plot RNA-seq logFC against pDMR meanDiff
+
+**NOTE:** Unlink when tabulating co-occurence, there is not need to explicitly 
+removed genes that weren't tested for DE; these are automatically removed by 
+`plot()` and `cor(..., use = "complete.obs")`.
+
+### PC genes
+
+```{r}
+ol <- findOverlaps(dmrs_NAvsBA9pos, promoters_by_gene_pc)
+tmp <- data.frame(x = dmrs_NAvsBA9pos$meanDiff[queryHits(ol)],
+                  y = rna_seq_de_pos$gene_level$logFC[
+                    match(names(promoters_by_gene_pc[subjectHits(ol)]),
+                          rna_seq_de_pos$gene_level$gene_id)],
+                  gene_id = names(promoters_by_gene_pc[subjectHits(ol)]))
+plot(y ~ x, 
+     data = tmp,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("NA_pos vs BA9_pos (PC genes): cor = ",
+                   round(cor(tmp$x, tmp$y, use = "complete.obs"), 2)),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", sum(complete.cases(tmp))),
+     col = ifelse(tmp$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)),
+     pch = 16)
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+```
+
+### lncRNA genes
+
+```{r}
+ol <- findOverlaps(dmrs_NAvsBA9pos, promoters_by_gene_lnc)
+tmp <- data.frame(x = dmrs_NAvsBA9pos$meanDiff[queryHits(ol)],
+                  y = rna_seq_de_pos$gene_level$logFC[
+                    match(names(promoters_by_gene_lnc[subjectHits(ol)]),
+                          rna_seq_de_pos$gene_level$gene_id)],
+                  gene_id = names(promoters_by_gene_lnc[subjectHits(ol)]))
+plot(y ~ x, 
+     data = tmp,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("NA_pos vs BA9_pos (lncRNA genes): cor = ",
+                   round(cor(tmp$x, tmp$y, use = "complete.obs"), 2)),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", sum(complete.cases(tmp))),
+     col = ifelse(tmp$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)),
+     pch = 16)
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+```
+
+### Summary
+
+- The directionality of the relationship between RNA-seq logFC and WGBS meanDiff at genes with pDMRs is as expected
+
+# pDARs
+
+- As for pDMRs, but looking at pDARs
+
+## Co-occurence
+
+- Cross-tabulate whether a gene has a pDAR as is differentially expressed
+
+```{r}
+tmp_pc <- data.frame(pDAR = overlapsAny(promoters_by_gene_pc[tested_pc], 
+                                        dars_pos),
+                     DEG = names(promoters_by_gene_pc[tested_pc]) %in% 
+                       deg_names)
+xt_pc <- xtabs(~ pDAR + DEG, tmp_pc)
+rownames(xt_pc) <- c("no-pDAR", "pDAR")
+colnames(xt_pc) <- c("non-DEG", "DEG")
+
+tmp_lnc <- data.frame(pDAR = overlapsAny(promoters_by_gene_lnc[tested_lnc], 
+                                         dars_pos),
+                      DEG = names(promoters_by_gene_lnc[tested_lnc]) %in% 
+                        deg_names)
+xt_lnc <- xtabs(~ pDAR + DEG, tmp_lnc)
+rownames(xt_lnc) <- c("no-pDAR", "pDAR")
+colnames(xt_lnc) <- c("non-DEG", "DEG")
+
+tmp <- data.frame(pDAR = overlapsAny(promoters_by_gene[tested], dars_pos),
+                  DEG = names(promoters_by_gene[tested]) %in% deg_names)
+xt <- xtabs(~ pDAR + DEG, tmp)
+rownames(xt) <- c("no-pDAR", "pDAR")
+colnames(xt) <- c("non-DEG", "DEG")
+```
+
+### PC genes
+
+`r knitr::kable(xt_pc)`
+
+- OR = `r round(fisher.test(xt_pc)$estimate, 1)` (`r round(fisher.test(xt_pc)$conf.int, 1)`)
+
+### lncRNA genes
+
+`r knitr::kable(xt_lnc)`
+
+- OR = `r round(fisher.test(xt_lnc)$estimate, 1)` (`r round(fisher.test(xt_lnc)$conf.int, 1)`)
+
+### Summary
+
+- DEGs and pDARs co-occur
+
+## Correlation
+
+- Take all genes with a pDAR and plot RNA-seq logFC against pDAR logFC
+
+**NOTE:** Unlink when tabulating co-occurence, there is not need to explicitly 
+removed genes that weren't tested for DE; these are automatically removed by 
+`plot()` and `cor(..., use = "complete.obs")`.
+
+### PC genes
+
+```{r}
+ol <- findOverlaps(dars_pos, promoters_by_gene_pc)
+tmp <- data.frame(x = dars_pos$logFC[queryHits(ol)],
+                  y = rna_seq_de_pos$gene_level$logFC[
+                    match(names(promoters_by_gene_pc[subjectHits(ol)]),
+                          rna_seq_de_pos$gene_level$gene_id)],
+                  gene_id = names(promoters_by_gene_pc[subjectHits(ol)]))
+plot(y ~ x, 
+     data = tmp,
+     xlab = "ATAC-seq (logFC)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("NA_pos vs BA9_pos (PC genes): cor = ",
+                   round(cor(tmp$x, tmp$y, use = "complete.obs"), 2)),
+     xlim = c(-3, 3),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", sum(complete.cases(tmp))),
+     col = ifelse(tmp$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)),
+     pch = 16)
+legend("topleft",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+```
+
+### lncRNA genes
+
+```{r}
+ol <- findOverlaps(dars_pos, promoters_by_gene_lnc)
+tmp <- data.frame(x = dars_pos$logFC[queryHits(ol)],
+                  y = rna_seq_de_pos$gene_level$logFC[
+                    match(names(promoters_by_gene_lnc[subjectHits(ol)]),
+                          rna_seq_de_pos$gene_level$gene_id)],
+                  gene_id = names(promoters_by_gene_lnc[subjectHits(ol)]))
+plot(y ~ x, 
+     data = tmp,
+     xlab = "ATAC-seq (logFC)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("NA_pos vs BA9_pos (lncRNA genes): cor = ",
+                   round(cor(tmp$x, tmp$y, use = "complete.obs"), 2)),
+     xlim = c(-3, 3),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", sum(complete.cases(tmp))),
+     col = ifelse(tmp$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)),
+     pch = 16)
+legend("topleft",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+```
+
+### Summary
+
+- The directionality of the relationship between RNA-seq logFC and ATAC-seq logFC at genes with pDARs is as expected
+
+# Interaction of pDMRs and pDARs
+
+- How is the expression of a gene affected by having both a pDMR and a pDAR
+
+**NOTE**: A gene may have multiple pDMRs or pDARs and so the same y-value may be plotted more than once
+
+## pDMRs stratified by [small|big]pDAR presence/absence
+
+### PC genes
+
+```{r}
+big_dars_pos <- dars_pos[abs(dars_pos$logFC) > 1]
+ol_dmr <- findOverlaps(dmrs_NAvsBA9pos, promoters_by_gene_pc)
+tmp_dmr <- data.frame(x = dmrs_NAvsBA9pos$meanDiff[queryHits(ol_dmr)],
+                      y = rna_seq_de_pos$gene_level$logFC[
+                        match(names(promoters_by_gene_pc[subjectHits(ol_dmr)]),
+                              rna_seq_de_pos$gene_level$gene_id)],
+                      gene_id = names(promoters_by_gene_pc[subjectHits(ol_dmr)]),
+                      stringsAsFactors = FALSE)
+ol_dar <- findOverlaps(dars_pos, promoters_by_gene_pc)
+dar_pc_genes <- unique(names(promoters_by_gene_pc[subjectHits(ol_dar)]))
+ol_small_dar <- findOverlaps(dars_pos[abs(dars_pos$logFC) <= 1],
+                             promoters_by_gene_pc)
+small_dar_pc_genes <- unique(
+  names(promoters_by_gene_pc[subjectHits(ol_small_dar)]))
+ol_big_dar <- findOverlaps(big_dars_pos, promoters_by_gene_pc)
+big_dar_pc_genes <- unique(
+  names(promoters_by_gene_pc[subjectHits(ol_big_dar)]))
+tmp_dmr$pDAR <- tmp_dmr$gene_id %in% dar_pc_genes
+tmp_dmr$psmallDAR <- tmp_dmr$gene_id %in% small_dar_pc_genes
+tmp_dmr$pbigDAR <- tmp_dmr$gene_id %in% big_dar_pc_genes
+
+tmp_big_dar <- subset(tmp_dmr, pbigDAR)
+tmp_dar <- subset(tmp_dmr, !pbigDAR & pDAR)
+tmp_small_dar <- subset(tmp_dmr, psmallDAR)
+tmp_no_dar <- subset(tmp_dmr, !pbigDAR & !pDAR & !psmallDAR)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 4))
+plot(y ~ x, 
+     data = tmp_big_dar,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("PC: cor = ",
+                   round(cor(tmp_big_dar$x, tmp_big_dar$y, 
+                             use = "complete.obs"), 2), 
+                   "\npbigDAR"),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_big_dar)),
+     pch = 16,
+     col = ifelse(tmp_big_dar$gene_id %in% deg_names, alpha("orange", 0.3), 
+            alpha("black", 0.3)))
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_dar,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("PC: cor = ",
+                   round(cor(tmp_dar$x, tmp_dar$y, use = "complete.obs"), 2), 
+                   "\npDAR"),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_dar)),
+     pch = 16,
+     col = ifelse(tmp_dar$gene_id %in% deg_names, alpha("orange", 0.3), 
+            alpha("black", 0.3)))
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_small_dar,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("PC: cor = ",
+                   round(cor(tmp_small_dar$x, tmp_small_dar$y, 
+                             use = "complete.obs"), 2),
+                   "\npsmallDAR"),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_small_dar)),
+     pch = 16,
+     col = ifelse(tmp_small_dar$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_no_dar,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("PC: cor = ",
+                   round(cor(tmp_no_dar$x, tmp_no_dar$y, 
+                             use = "complete.obs"), 2),
+                   "\nNo DAR"),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_no_dar)),
+     pch = 16,
+     col = ifelse(tmp_no_dar$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+par(op)
+```
+
+### lncRNA genes
+
+```{r}
+ol_dmr <- findOverlaps(dmrs_NAvsBA9pos, promoters_by_gene_lnc)
+tmp_dmr <- data.frame(x = dmrs_NAvsBA9pos$meanDiff[queryHits(ol_dmr)],
+                      y = rna_seq_de_pos$gene_level$logFC[
+                        match(names(promoters_by_gene_lnc[subjectHits(ol_dmr)]),
+                              rna_seq_de_pos$gene_level$gene_id)],
+                      gene_id = names(promoters_by_gene_lnc[subjectHits(ol_dmr)]),
+                      stringsAsFactors = FALSE)
+ol_dar <- findOverlaps(dars_pos, promoters_by_gene_lnc)
+dar_lnc_genes <- unique(names(promoters_by_gene_lnc[subjectHits(ol_dar)]))
+ol_small_dar <- findOverlaps(dars_pos[abs(dars_pos$logFC) <= 1],
+                             promoters_by_gene_lnc)
+small_dar_lnc_genes <- unique(
+  names(promoters_by_gene_lnc[subjectHits(ol_small_dar)]))
+ol_big_dar <- findOverlaps(big_dars_pos, promoters_by_gene_lnc)
+big_dar_lnc_genes <- unique(
+  names(promoters_by_gene_lnc[subjectHits(ol_big_dar)]))
+tmp_dmr$pDAR <- tmp_dmr$gene_id %in% dar_lnc_genes
+tmp_dmr$psmallDAR <- tmp_dmr$gene_id %in% small_dar_lnc_genes
+tmp_dmr$pbigDAR <- tmp_dmr$gene_id %in% big_dar_lnc_genes
+
+tmp_big_dar <- subset(tmp_dmr, pbigDAR)
+tmp_dar <- subset(tmp_dmr, !pbigDAR & pDAR)
+tmp_small_dar <- subset(tmp_dmr, psmallDAR)
+tmp_no_dar <- subset(tmp_dmr, !pbigDAR & !pDAR & !psmallDAR)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 4))
+plot(y ~ x, 
+     data = tmp_big_dar,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("lncRNA: cor = ",
+                   round(cor(tmp_big_dar$x, tmp_big_dar$y, 
+                             use = "complete.obs"), 2), 
+                   "\npbigDAR"),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_big_dar)),
+     pch = 16,
+     col = ifelse(tmp_big_dar$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_dar,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("lncRNA: cor = ",
+                   round(cor(tmp_dar$x, tmp_dar$y, use = "complete.obs"), 2), 
+                   "\npDAR"),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_dar)),
+     pch = 16,
+     col = ifelse(tmp_dar$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_small_dar,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("lncRNA: cor = ",
+                   round(cor(tmp_small_dar$x, tmp_small_dar$y, 
+                             use = "complete.obs"), 2),
+                   "\npsmallDAR"),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_small_dar)),
+     pch = 16,
+     col = ifelse(tmp_small_dar$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_no_dar,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("lncRNA: cor = ",
+                   round(cor(tmp_no_dar$x, tmp_no_dar$y, 
+                             use = "complete.obs"), 2),
+                   "\nNo DAR"),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_no_dar)),
+     pch = 16,
+     col = ifelse(tmp_no_dar$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+par(op)
+```
+
+## pDMRs stratified by number of pDARs
+
+### PC genes
+
+```{r}
+ol_dmr <- findOverlaps(dmrs_NAvsBA9pos, promoters_by_gene_pc)
+tmp_dmr <- data.frame(x = dmrs_NAvsBA9pos$meanDiff[queryHits(ol_dmr)],
+                      y = rna_seq_de_pos$gene_level$logFC[
+                        match(names(promoters_by_gene_pc[subjectHits(ol_dmr)]),
+                              rna_seq_de_pos$gene_level$gene_id)],
+                      gene_id = names(promoters_by_gene_pc[subjectHits(ol_dmr)]),
+                      stringsAsFactors = FALSE)
+tmp_dmr$npDAR <- countOverlaps(promoters_by_gene_pc[tmp_dmr$gene_id], 
+                               dars_pos)
+i <- table(tmp_dmr$npDAR)
+# NOTE: Funky way to ensure group sizes are big enough to compute correlations
+i <- i[i > (3 * as.integer(names(i)))]
+cors <- lapply(as.integer(names(i)), function(ii) {
+  tmp <- subset(tmp_dmr, npDAR == ii)
+  cor.test(tmp$x, tmp$y, use = "complete.obs")
+})
+plot(names(i), sapply(cors, "[[", "estimate"), ylim = c(-1, 1), 
+     xlab = "#pDARs", 
+     type = "b", ylab = "cor [95% CI]", main = "PC genes", xaxt = "n")
+axis(1, names(i))
+lines(names(i), sapply(cors, "[[", "conf.int")[1, ], type = "l")
+lines(names(i), sapply(cors, "[[", "conf.int")[2, ], type = "l")
+```
+
+### lncRNA genes
+
+```{r}
+ol_dmr <- findOverlaps(dmrs_NAvsBA9pos, promoters_by_gene_lnc)
+tmp_dmr <- data.frame(x = dmrs_NAvsBA9pos$meanDiff[queryHits(ol_dmr)],
+                      y = rna_seq_de_pos$gene_level$logFC[
+                        match(names(promoters_by_gene_lnc[subjectHits(ol_dmr)]),
+                              rna_seq_de_pos$gene_level$gene_id)],
+                      gene_id = names(promoters_by_gene_lnc[subjectHits(ol_dmr)]),
+                      stringsAsFactors = FALSE)
+tmp_dmr$npDAR <- countOverlaps(promoters_by_gene_lnc[tmp_dmr$gene_id], 
+                               dars_pos)
+i <- table(tmp_dmr$npDAR)
+# NOTE: Funky way to ensure group sizes are big enough to compute correlations
+i <- i[i > (3 * as.integer(names(i)))]
+cors <- lapply(as.integer(names(i)), function(ii) {
+  tmp <- subset(tmp_dmr, npDAR == ii)
+  cor.test(tmp$x, tmp$y, use = "complete.obs")
+})
+plot(names(i), sapply(cors, "[[", "estimate"), ylim = c(-1, 1), 
+     xlab = "#pDARs", 
+     type = "b", ylab = "cor [95% CI]", main = "lncRNA genes", xaxt = "n")
+axis(1, names(i))
+lines(names(i), sapply(cors, "[[", "conf.int")[1, ], type = "l")
+lines(names(i), sapply(cors, "[[", "conf.int")[2, ], type = "l")
+```
+
+## pDARs stratified by [big]pDMR presence/absence
+
+### PC genes
+
+```{r}
+ol_dar <- findOverlaps(dars_pos, promoters_by_gene_pc)
+tmp_dar <- data.frame(x = dars_pos$logFC[queryHits(ol_dar)],
+                      y = rna_seq_de_pos$gene_level$logFC[
+                        match(names(promoters_by_gene_pc[subjectHits(ol_dar)]),
+                              rna_seq_de_pos$gene_level$gene_id)],
+                      gene_id = names(promoters_by_gene_pc[subjectHits(ol_dar)]),
+                      stringsAsFactors = FALSE)
+ol_dmr <- findOverlaps(dmrs_NAvsBA9pos, promoters_by_gene_pc)
+dmr_pc_genes <- unique(names(promoters_by_gene_pc[subjectHits(ol_dmr)]))
+ol_big_dmr <- findOverlaps(big_dmrs_NAvsBA9pos, promoters_by_gene_pc)
+big_dmr_pc_genes <- unique(names(promoters_by_gene_pc[subjectHits(ol_big_dmr)]))
+
+tmp_dar$pDMR <- tmp_dar$gene_id %in% dmr_pc_genes
+tmp_dar$pbigDMR <- tmp_dar$gene_id %in% big_dmr_pc_genes
+
+tmp_big_dmr <- subset(tmp_dar, pbigDMR)
+tmp_dmr <- subset(tmp_dar, !pbigDMR & pDMR)
+tmp_no_dmr <- subset(tmp_dar, !pbigDMR & !pDMR)
+
+par(mfrow = c(1, 3))
+plot(y ~ x, 
+     data = tmp_big_dmr,
+     xlab = "ATAC-seq (logFC)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("PC: cor = ",
+                   round(cor(tmp_big_dmr$x, tmp_big_dmr$y, 
+                             use = "complete.obs"), 2), 
+                   "\npbigDMR"),
+     xlim = c(-3, 3),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_big_dmr)),
+     pch = 16,
+     col = ifelse(tmp_big_dmr$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("bottomright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_dmr,
+     xlab = "ATAC-seq (logFC)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("PC: cor = ",
+                   round(cor(tmp_dmr$x, tmp_dmr$y, 
+                             use = "complete.obs"), 2), 
+                   "\npDMR"),
+     xlim = c(-3, 3),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_dmr)),
+     pch = 16,
+     col = ifelse(tmp_dmr$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("bottomright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_no_dmr,
+     xlab = "ATAC-seq (logFC)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("PC: cor = ",
+                   round(cor(tmp_no_dmr$x, tmp_no_dmr$y, 
+                             use = "complete.obs"), 2), 
+                   "\nNo DMR"),
+     xlim = c(-3, 3),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_no_dmr)),
+     pch = 16,
+     col = ifelse(tmp_no_dmr$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("bottomright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+```
+
+### lncRNA genes
+
+```{r}
+ol_dar <- findOverlaps(dars_pos, promoters_by_gene_lnc)
+tmp_dar <- data.frame(x = dars_pos$logFC[queryHits(ol_dar)],
+                      y = rna_seq_de_pos$gene_level$logFC[
+                        match(names(promoters_by_gene_lnc[subjectHits(ol_dar)]),
+                              rna_seq_de_pos$gene_level$gene_id)],
+                      gene_id = names(promoters_by_gene_lnc[subjectHits(ol_dar)]),
+                      stringsAsFactors = FALSE)
+ol_dmr <- findOverlaps(dmrs_NAvsBA9pos, promoters_by_gene_lnc)
+dmr_lnc_genes <- unique(names(promoters_by_gene_lnc[subjectHits(ol_dmr)]))
+ol_big_dmr <- findOverlaps(big_dmrs_NAvsBA9pos, promoters_by_gene_lnc)
+big_dmr_lnc_genes <- unique(names(promoters_by_gene_lnc[subjectHits(ol_big_dmr)]))
+
+tmp_dar$pDMR <- tmp_dar$gene_id %in% dmr_lnc_genes
+tmp_dar$pbigDMR <- tmp_dar$gene_id %in% big_dmr_lnc_genes
+
+tmp_big_dmr <- subset(tmp_dar, pbigDMR)
+tmp_dmr <- subset(tmp_dar, !pbigDMR & pDMR)
+tmp_no_dmr <- subset(tmp_dar, !pbigDMR & !pDMR)
+
+par(mfrow = c(1, 3))
+plot(y ~ x, 
+     data = tmp_big_dmr,
+     xlab = "ATAC-seq (logFC)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("lncRNA: cor = ",
+                   round(cor(tmp_big_dmr$x, tmp_big_dmr$y, 
+                             use = "complete.obs"), 2), 
+                   "\npbigDMR"),
+     xlim = c(-3, 3),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_big_dmr)),
+     pch = 16,
+     col = ifelse(tmp_big_dmr$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("bottomright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_dmr,
+     xlab = "ATAC-seq (logFC)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("lncRNA: cor = ",
+                   round(cor(tmp_dmr$x, tmp_dmr$y, 
+                             use = "complete.obs"), 2), 
+                   "\npDMR"),
+     xlim = c(-3, 3),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_dmr)),
+     pch = 16,
+     col = ifelse(tmp_dmr$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("bottomright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+plot(y ~ x, 
+     data = tmp_no_dmr,
+     xlab = "ATAC-seq (logFC)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("lncRNA: cor = ",
+                   round(cor(tmp_no_dmr$x, tmp_no_dmr$y, 
+                             use = "complete.obs"), 2), 
+                   "\nNo DMR"),
+     xlim = c(-3, 3),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", nrow(tmp_no_dmr)),
+     pch = 16,
+     col = ifelse(tmp_no_dmr$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)))
+legend("bottomright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+```
+
+## pDARs stratified by number of pDMRs
+
+### PC genes
+
+```{r}
+ol_dar <- findOverlaps(dars_pos, promoters_by_gene_pc)
+tmp_dar <- data.frame(x = dars_pos$logFC[queryHits(ol_dar)],
+                      y = rna_seq_de_pos$gene_level$logFC[
+                        match(names(promoters_by_gene_pc[subjectHits(ol_dar)]),
+                              rna_seq_de_pos$gene_level$gene_id)],
+                      gene_id = names(promoters_by_gene_pc[subjectHits(ol_dar)]),
+                      stringsAsFactors = FALSE)
+tmp_dar$npDMR <- countOverlaps(promoters_by_gene_pc[tmp_dar$gene_id], 
+                               dmrs_NAvsBA9pos)
+i <- table(tmp_dar$npDMR)
+# NOTE: Funky way to ensure group sizes are big enough to compute correlations
+i <- i[i > (3 * as.integer(names(i)))]
+cors <- lapply(as.integer(names(i)), function(ii) {
+  tmp <- subset(tmp_dar, npDMR == ii)
+  cor.test(tmp$x, tmp$y, use = "complete.obs")
+})
+plot(names(i), sapply(cors, "[[", "estimate"), ylim = c(-1, 1), 
+     xlab = "#pDMRs", 
+     type = "b", ylab = "cor [95% CI]", main = "PC genes", xaxt = "n")
+axis(1, names(i))
+lines(names(i), sapply(cors, "[[", "conf.int")[1, ], type = "l")
+lines(names(i), sapply(cors, "[[", "conf.int")[2, ], type = "l")
+```
+
+### lncRNA genes
+
+```{r}
+ol_dar <- findOverlaps(dars_pos, promoters_by_gene_lnc)
+tmp_dar <- data.frame(x = dars_pos$logFC[queryHits(ol_dar)],
+                      y = rna_seq_de_pos$gene_level$logFC[
+                        match(names(promoters_by_gene_lnc[subjectHits(ol_dar)]),
+                              rna_seq_de_pos$gene_level$gene_id)],
+                      gene_id = names(promoters_by_gene_lnc[subjectHits(ol_dar)]),
+                      stringsAsFactors = FALSE)
+tmp_dar$npDMR <- countOverlaps(promoters_by_gene_lnc[tmp_dar$gene_id], 
+                               dmrs_NAvsBA9pos)
+i <- table(tmp_dar$npDMR)
+# NOTE: Funky way to ensure group sizes are big enough to compute correlations
+i <- i[i > (3 * as.integer(names(i)))]
+cors <- lapply(as.integer(names(i)), function(ii) {
+  tmp <- subset(tmp_dar, npDMR == ii)
+  cor.test(tmp$x, tmp$y, use = "complete.obs")
+})
+plot(names(i), sapply(cors, "[[", "estimate"), ylim = c(-1, 1), 
+     xlab = "#pDMRs", 
+     type = "b", ylab = "cor [95% CI]", main = "lncRNA genes", xaxt = "n")
+axis(1, names(i))
+lines(names(i), sapply(cors, "[[", "conf.int")[1, ], type = "l")
+lines(names(i), sapply(cors, "[[", "conf.int")[2, ], type = "l")
+```
+
+## Summary
+
+- Genes with a pDMR have the expected negative correlation between RNA-seq logFC and WGBS meanDiff
+- Genes with a pDAR have the expected positive correlation between RNA-seq logFC and ATAC-seq logFC
+- In both cases, by stratifying the genes by whether it additionally has a pDAR/pDMR increases the strength of the correlation
+    - Result(s) stronger for PC genes than lncRNA genes
+    - When stratifying by [big|small]pDARs, the correlation is strongest for DARs, followed by smallDARs, followed by no DARs
+        - There are too few bigDAR cases to draw any reliable conclusions
+    - When stratifying by [big]DMRs, the correlation is equally strong for bigDMRs and DMRs, 
+- Also find that genes with more pDARs (resp. pDMRs) have a stronger negative (resp. positive) correlation between RNA-seq logFC and WGBS meanDiff (resp. ATAC-seq logFC)
+
+# eDMRs
+
+## Co-occurence
+
+- Cross-tabulate whether a gene has a eDMR and is differentially expressed
+
+```{r}
+tested <- names(fantom5_enhancers_by_gene) %in% 
+  rna_seq_de_pos$gene_level$gene_id
+
+tmp <- data.frame(eDMR = overlapsAny(fantom5_enhancers_by_gene[tested],
+                                     dmrs_NAvsBA9pos),
+                  DEG = names(fantom5_enhancers_by_gene[tested]) %in% 
+                    deg_names)
+xt <- xtabs(~ eDMR + DEG, tmp)
+rownames(xt) <- c("no-eDMR", "eDMR")
+colnames(xt) <- c("non-DEG", "DEG")
+```
+
+### Summary
+
+`r knitr::kable(xt)`
+
+- OR = `r round(fisher.test(xt)$estimate, 1)` (`r round(fisher.test(xt)$conf.int, 1)`)
+- DEGs and eDMRs co-occur (but only slightly) in PC genes
+
+## Correlation
+
+- Take all genes with a eDMR and plot RNA-seq logFC against eDMR meanDiff
+
+**NOTE:** Unlike when tabulating co-occurence, there is not need to explicitly 
+removed genes that weren't tested for DE; these are automatically removed by 
+`plot()` and `cor(..., use = "complete.obs")`.
+
+```{r}
+ol <- findOverlaps(dmrs_NAvsBA9pos, fantom5_enhancers_by_gene)
+tmp <- data.frame(x = dmrs_NAvsBA9pos$meanDiff[queryHits(ol)],
+                  y = rna_seq_de_pos$gene_level$logFC[
+                    match(names(fantom5_enhancers_by_gene[subjectHits(ol)]),
+                          rna_seq_de_pos$gene_level$gene_id)],
+                  gene_id = names(fantom5_enhancers_by_gene[subjectHits(ol)]))
+plot(y ~ x, 
+     data = tmp,
+     xlab = "WGBS (meanDiff)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("NA_pos vs BA9_pos (PC genes): cor = ",
+                   round(cor(tmp$x, tmp$y, use = "complete.obs"), 2)),
+     xlim = c(-2, 2),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", sum(complete.cases(tmp))),
+     col = ifelse(tmp$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)),
+     pch = 16)
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+```
+
+### Summary
+
+- The directionality of the relationship between RNA-seq logFC and WGBS meanDiff at genes with eDMRs is weakly negative. Unlike with promoters, less is known about the 'true' direction of this relationship
+
+# eDARs 
+
+## Co-occurence
+
+- Cross-tabulate whether a gene has a eDAR and is differentially expressed
+
+```{r}
+tested <- names(fantom5_enhancers_by_gene) %in% 
+  rna_seq_de_pos$gene_level$gene_id
+
+tmp <- data.frame(eDAR = overlapsAny(fantom5_enhancers_by_gene[tested],
+                                     dars_pos),
+                  DEG = names(fantom5_enhancers_by_gene[tested]) %in% 
+                    deg_names)
+xt <- xtabs(~ eDAR + DEG, tmp)
+rownames(xt) <- c("no-eDAR", "eDAR")
+colnames(xt) <- c("non-DEG", "DEG")
+```
+
+### Summary
+
+`r knitr::kable(xt)`
+
+- OR = `r round(fisher.test(xt)$estimate, 1)` (`r round(fisher.test(xt)$conf.int, 1)`)
+
+- DEGs and eDARs co-occur in PC genes
+
+## Correlation
+
+- Take all genes with a eDAR and plot RNA-seq logFC against eDAR meanDiff
+
+**NOTE:** Unlink when tabulating co-occurence, there is not need to explicitly 
+removed genes that weren't tested for DE; these are automatically removed by 
+`plot()` and `cor(..., use = "complete.obs")`.
+
+```{r}
+ol <- findOverlaps(dars_pos, fantom5_enhancers_by_gene)
+tmp <- data.frame(x = dars_pos$logFC[queryHits(ol)],
+                  y = rna_seq_de_pos$gene_level$logFC[
+                    match(names(fantom5_enhancers_by_gene[subjectHits(ol)]),
+                          rna_seq_de_pos$gene_level$gene_id)],
+                  gene_id = names(fantom5_enhancers_by_gene[subjectHits(ol)]))
+plot(y ~ x, 
+     data = tmp,
+     xlab = "ATAC-seq (logFC)", 
+     ylab = "RNA-seq (logFC)",
+     main = paste0("NA_pos vs BA9_pos (PC genes): cor = ",
+                   round(cor(tmp$x, tmp$y, use = "complete.obs"), 2)),
+     xlim = c(-3, 3),
+     ylim = c(-10, 10),
+     sub = paste0("n = ", sum(complete.cases(tmp))),
+     col = ifelse(tmp$gene_id %in% deg_names, alpha("orange", 0.3), 
+                  alpha("black", 0.3)),
+     pch = 16)
+legend("topright",
+       legend = c("DEG", "non-DEG"),
+       pch = c(16, 16),
+       col = c("orange", "black"),
+       bty = "n")
+```
+
+- The directionality of the relationship between RNA-seq logFC and ATAC-seq logFC at genes with eDARs is weakly positive Unlike with promoters, less is known about the 'true' direction of this relationship
+
+# pDAR, pDMR, eDAR, and eDMR and their effect on gene expression
+
+The data are stored in `rna_atac_meth`. 
+
+## Co-occurence
+
+We tested `r nrow(rna_atac_meth)` gene for differential expression. The 
+majority of these genes have no pDAR, pDMR, eDAR, or eDMR:
+
+```{r}
+f <- function(ram) {
+  x <- list(pDAR = which(sapply(ram$pDAR, any)),
+            pDMR = which(sapply(ram$pDMR, any)),
+            eDAR = which(sapply(ram$eDAR, any)),
+            eDMR = which(sapply(ram$eDMR, any)))
+  x$none <- setdiff(seq_len(nrow(ram)), 
+                    c(x$pDAR, x$pDMR, x$eDAR, x$eDMR))
+  x
+}
+
+rna_atac_meth %>% 
+  f() %>% 
+  fromList() %>% 
+  upset(order.by = "freq")
+```
+
+As expected, by focusing on the differentially expressed genes we find a 
+larger proportion have at least one pDAR, pDMR, eDAR, or eDMR:
+
+```{r}
+rna_atac_meth %>% 
+  filter(DE) %>%
+  f() %>% 
+  fromList() %>% 
+  upset(order.by = "freq")
+```
+
+## Correlation of chromatin accessibility and methylation with gene expression
+
+Focusing on NA_pos vs. BA9_pos. For each gene, plot each sample's expression, 
+chromatin accessibility at all promoter- and enhancer-linked peaks, average 
+methlyation in DMRs that overlap all linked promtoers and enhancers. An 
+example is shown for ENSG00000108370.11; this gene is differentially expressed, 
+has DARs overlapping a promoter, and a DMR overlapping a promoter. Moreover, 
+the directions of the relationship between expression and accessibility and 
+the relationship between expression and methylation are as expected.
+
+```{r, ENSG00000108370.11}
+rna_atac_meth %>%
+  filter(gene == "ENSG00000108370.11") %>%
+  plotRAM()
+
+# NOTE: ENSG00000099840.9 is an example of a gene with opposite RNA-meth, but 
+#       GTEX report expression only in sperm, so weird
+```
+
+```{r}
+set.seed(666)
+pdf("../figures/DE-genes-enhancer-promoter-triples.pdf")
+rna_atac_meth %>%
+  filter(DE) %>%
+  sample_n(100) %>%
+  plotRAM()
+dev.off()
+
+pdf("../figures/non-DE-genes-enhancer-promoter-triples.pdf")
+rna_atac_meth %>%
+  filter(!DE) %>%
+  sample_n(100) %>%
+  plotRAM()
+dev.off()
+
+pdf("../figures/DE-genes-enhancer-promoter-triples-with-all-hit.pdf")
+rna_atac_meth %>%
+  filter(gene %in% deg_names, sapply(pDMR, any) & sapply(eDMR, any) & 
+           sapply(pDAR, any) & sapply(eDAR, any)) %>%
+  plotRAM()
+dev.off()
+```
+
+[`../figures/DE-genes-enhancer-promoter-triples.pdf`](../figures/DE-genes-enhancer-promoter-triples.pdf) shows these plots for 100 randomly selected DE genes and [`../figures/non-DE-genes-enhancer-promoter-triples.pdf`](../figures/non-DE-genes-enhancer-promoter-triples.pdf) shows these plots for 100 randomly selected non-DE genes
+[`../figures/DE-genes-enhancer-promoter-triples-with-all-hit.pdf`](../figures/DE-genes-enhancer-promoter-triples-with-all-hit.pdf) shows these plots for DE genes with at least on of each of pDMR, 
+pDAR, eDMR, and eDAR.
+
+Browsing these plots suggests the relationship between gene expression and 
+pDMRs, pDARs, eDMRs, and eDARs is complicated; some in the expected 
+direction(s) while others do not. To try to better understand these patterns, 
+we tabulate their occurences and also summarise the relationships by 
+correlation coefficients.
+
+### Correlation densities
+
+```{r}
+myCor <- function(x, y) {
+  x <- x[[1]]
+  y <- y[[1]]
+  list(sapply(seq_len(nrow(x)), function(i) {
+    cor(x[i, ], as.vector(y), method = "pearson")
+  }))
+}
+
+# NOTE: Screwy workflow is due to working around a segfault in dplyr
+tmp <- rna_atac_meth %>%
+  group_by(gene) %>%
+  summarise(
+    rho_pAcc = myCor(pAcc, exp),
+    rho_eAcc = myCor(eAcc, exp)) %>%
+  ungroup() %>%
+  mutate(gene = rna_atac_meth$gene,
+         DE = rna_atac_meth$DE,
+         pDAR = rna_atac_meth$pDAR,
+         eDAR = rna_atac_meth$eDAR)
+  
+de_rho <- tmp[tmp$DE, ]
+nonde_rho <- tmp[!tmp$DE, ]
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 2))
+
+# Promoter
+plot(density(unlist(nonde_rho$rho_pAcc), from = -1, to = 1), 
+     main = "Promoter: spearman")
+lines(density(unlist(de_rho$rho_pAcc), from = -1, to = 1), col = "orange")
+legend("topleft", legend = c("nDE", "DE"), lty = c(1, 1), 
+       col = c("black", "orange"), bty = "n")
+boxplot(list("nDE" = unlist(nonde_rho$rho_pAcc),
+             "DE" = unlist(de_rho$rho_pAcc)),
+        main = "Promoter: spearman", 
+        las = 2)
+
+plot(density(atanh(unlist(nonde_rho$rho_pAcc))),
+     main = "Promoter: atanh(spearman)")
+lines(density(atanh(unlist(de_rho$rho_pAcc))), col = "orange")
+legend("topleft", legend = c("nDE", "DE"), lty = c(1, 1), 
+       col = c("black", "orange"), bty = "n")
+boxplot(list("nDE" = atanh(unlist(nonde_rho$rho_pAcc)),
+             "DE" = atanh(unlist(de_rho$rho_pAcc))),
+        main = "Promoter: atanh(spearman)",
+        las = 2)
+
+plot(density(unlist(nonde_rho$rho_pAcc[!unlist(nonde_rho$pDAR)]),
+             from = -1, to = 1),
+     main = "Promoter: spearman", lty = 2)
+lines(density(unlist(nonde_rho$rho_pAcc[unlist(nonde_rho$pDAR)]),
+             from = -1, to = 1), col = "black", lty = 1)
+lines(density(unlist(de_rho$rho_pAcc[unlist(de_rho$pDAR)]),
+             from = -1, to = 1), col = "orange")
+lines(density(unlist(de_rho$rho_pAcc[!unlist(de_rho$pDAR)]),
+             from = -1, to = 1), col = "orange", 
+      lty = 2)
+legend("bottom", legend = c("nDE/nDAR", "nDE/DAR", "DE/DAR", "DE/nDAR"),
+       lty = c(2, 1, 1, 2), col = c("black", "black", "orange", "orange"), 
+       bty = "n")
+boxplot(list("nDE/nDAR" = 
+               unlist(nonde_rho$rho_pAcc[!unlist(nonde_rho$pDAR)]),
+             "nDE/DAR" = 
+               unlist(nonde_rho$rho_pAcc[unlist(nonde_rho$pDAR)]),
+             "DE/DAR" = unlist(de_rho$rho_pAcc[unlist(de_rho$pDAR)]),
+             "DE/nDAR" = 
+               unlist(de_rho$rho_pAcc[!unlist(de_rho$pDAR)])),
+        main = "Promoter: spearman",
+        las = 2)
+
+plot(density(atanh(unlist(nonde_rho$rho_pAcc[!unlist(nonde_rho$pDAR)]))),
+     main = "Promoter: atanh(spearman)", lty = 2)
+lines(density(atanh(unlist(nonde_rho$rho_pAcc[unlist(nonde_rho$pDAR)]))), 
+      col = "orange", lty = 1)
+lines(density(atanh(unlist(de_rho$rho_pAcc[unlist(de_rho$pDAR)]))), 
+              col = "orange")
+lines(density(atanh(unlist(de_rho$rho_pAcc[!unlist(de_rho$pDAR)]))),
+      col = "orange", 
+      lty = 2)
+legend("topleft", legend = c("nDE/nDAR", "nDE/DAR", "DE/DAR", "DE/nDAR"),
+       lty = c(2, 1, 1, 2), col = c("black", "black", "orange", "orange"), 
+       bty = "n")
+boxplot(list("nDE/nDAR" = 
+               atanh(unlist(nonde_rho$rho_pAcc[!unlist(nonde_rho$pDAR)])),
+             "nDE/DAR" = 
+               atanh(unlist(nonde_rho$rho_pAcc[unlist(nonde_rho$pDAR)])),
+             "DE/DAR" = atanh(unlist(de_rho$rho_pAcc[unlist(de_rho$pDAR)])),
+             "DE/nDAR" = 
+               atanh(unlist(de_rho$rho_pAcc[!unlist(de_rho$pDAR)]))),
+        main = "Promoter: atanh(spearman)",
+        las = 2)
+
+# Enhancer
+plot(density(unlist(nonde_rho$rho_eAcc),
+             from = -1, to = 1), main = "Enhancer: spearman")
+lines(density(unlist(de_rho$rho_eAcc),
+             from = -1, to = 1), col = "orange")
+legend("topleft", legend = c("nDE", "DE"), lty = c(1, 1), 
+       col = c("black", "orange"), bty = "n")
+boxplot(list("nDE" = unlist(nonde_rho$rho_eAcc),
+             "DE" = unlist(de_rho$rho_eAcc)),
+        main = "Enhancer: spearman", 
+        las = 2)
+
+plot(density(atanh(unlist(nonde_rho$rho_eAcc))), main = "Enhancer: atanh(spearman)")
+lines(density(atanh(unlist(de_rho$rho_eAcc))), col = "orange")
+legend("topleft", legend = c("nDE", "DE"), lty = c(1, 1), 
+       col = c("black", "orange"), bty = "n")
+boxplot(list("nDE" = atanh(unlist(nonde_rho$rho_eAcc)),
+             "DE" = atanh(unlist(de_rho$rho_eAcc))),
+        main = "Enhancer: atanh(spearman)",
+        las = 2)
+
+plot(density(unlist(nonde_rho$rho_eAcc[!unlist(nonde_rho$eDAR)]),
+             from = -1, to = 1),
+     main = "Enhancer: spearman", lty = 2)
+lines(density(unlist(nonde_rho$rho_eAcc[unlist(nonde_rho$eDAR)]),
+             from = -1, to = 1), col = "black")
+lines(density(unlist(de_rho$rho_eAcc[unlist(de_rho$eDAR)]),
+             from = -1, to = 1), col = "orange")
+lines(density(unlist(de_rho$rho_eAcc[!unlist(de_rho$eDAR)]),
+             from = -1, to = 1), col = "orange", 
+      lty = 2)
+legend("bottom", legend = c("nDE/nDAR", "nDE/DAR", "DE/DAR", "DE/nDAR"),
+       lty = c(2, 1, 1, 2), col = c("black", "black", "orange", "orange"), 
+       bty = "n")
+boxplot(list("nDE/nDAR" = 
+               unlist(nonde_rho$rho_eAcc[!unlist(nonde_rho$eDAR)]),
+             "nDE/DAR" = 
+               unlist(nonde_rho$rho_eAcc[unlist(nonde_rho$eDAR)]),
+             "DE/DAR" = unlist(de_rho$rho_eAcc[unlist(de_rho$eDAR)]),
+             "DE/nDAR" = 
+               unlist(de_rho$rho_eAcc[!unlist(de_rho$eDAR)])),
+        main = "Enhancer: spearman",
+        las = 2)
+
+plot(density(atanh(unlist(nonde_rho$rho_eAcc[!unlist(nonde_rho$eDAR)]))),
+     main = "Enhancer: atanh(spearman)", lty = 2)
+lines(density(atanh(unlist(nonde_rho$rho_eAcc[unlist(nonde_rho$eDAR)]))), 
+      col = "black")
+lines(density(atanh(unlist(de_rho$rho_eAcc[unlist(de_rho$eDAR)]))), 
+      col = "orange")
+lines(density(atanh(unlist(de_rho$rho_eAcc[!unlist(de_rho$eDAR)]))),
+      col = "orange", 
+      lty = 2)
+legend("topleft", legend = c("nDE/nDAR", "nDE/DAR", "DE/DAR", "DE/nDAR"),
+       lty = c(2, 1, 1, 2), col = c("black", "black", "orange", "orange"), 
+       bty = "n")
+boxplot(list("nDE,nDAR" = 
+               atanh(unlist(nonde_rho$rho_eAcc[!unlist(nonde_rho$eDAR)])),
+             "nDE,DAR" = 
+               atanh(unlist(nonde_rho$rho_eAcc[unlist(nonde_rho$eDAR)])),
+             "DE,DAR" = atanh(unlist(de_rho$rho_eAcc[unlist(de_rho$eDAR)])),
+             "DE,nDAR" = 
+               atanh(unlist(de_rho$rho_eAcc[!unlist(de_rho$eDAR)]))),
+        main = "Enhancer: atanh(spearman)",
+        las = 2)
+```
+
+### Summary
+
+On average, DEGs have a higher correlation between ATAC-seq and RNA-seq 
+expression of the linked gene than non-DEGs. On average, this correlation is 
+stronger for promoter-gene links than enhancer-gene links. There is no 
+significant difference when further stratified by whether the ATAC-seq peak is 
+a DAR or a non-DAR.
+
+These plots are supported by tests of whether the average correlations are 
+different in these conditions (using a t-test on the Fisher-transformed 
+correlations).
+
+```{r, echo = TRUE, eval = TRUE, results = "markdup"}
+# DEG vs non-DEG in promoter ATAC peaks
+t.test(atanh(unlist(de_rho$rho_pAcc)), atanh(unlist(nonde_rho$rho_pAcc)))
+atan(t.test(atanh(unlist(de_rho$rho_pAcc)), atanh(unlist(nonde_rho$rho_pAcc)))$estimate)
+atan(t.test(atanh(unlist(de_rho$rho_pAcc)), atanh(unlist(nonde_rho$rho_pAcc)))$conf.int)
+
+# DEG vs non-DEG in enhancer ATAC peaks
+t.test(atanh(unlist(de_rho$rho_eAcc)), atanh(unlist(nonde_rho$rho_eAcc)))
+atan(t.test(atanh(unlist(de_rho$rho_eAcc)), atanh(unlist(nonde_rho$rho_eAcc)))$estimate)
+atan(t.test(atanh(unlist(de_rho$rho_eAcc)), atanh(unlist(nonde_rho$rho_eAcc)))$conf.int)
+
+# DEG vs non-DEG in pDARs vs non-pDARs
+t.test(atanh(unlist(de_rho$rho_pAcc[unlist(de_rho$pDAR)])),
+       atanh(unlist(de_rho$rho_pAcc[!unlist(de_rho$pDAR)])))
+atan(t.test(atanh(unlist(de_rho$rho_pAcc[unlist(de_rho$pDAR)])),
+       atanh(unlist(de_rho$rho_pAcc[!unlist(de_rho$pDAR)])))$estimate)
+atan(t.test(atanh(unlist(de_rho$rho_pAcc[unlist(de_rho$pDAR)])),
+       atanh(unlist(de_rho$rho_pAcc[!unlist(de_rho$pDAR)])))$conf.int)
+# DEG vs non-DEG in eDARs vs non-eDARs
+t.test(atanh(unlist(de_rho$rho_eAcc[unlist(de_rho$eDAR)])),
+       atanh(unlist(de_rho$rho_eAcc[!unlist(de_rho$eDAR)])))
+atan(t.test(atanh(unlist(de_rho$rho_eAcc[unlist(de_rho$eDAR)])),
+       atanh(unlist(de_rho$rho_eAcc[!unlist(de_rho$eDAR)])))$estimate)
+atan(t.test(atanh(unlist(de_rho$rho_eAcc[unlist(de_rho$eDAR)])),
+       atanh(unlist(de_rho$rho_eAcc[!unlist(de_rho$eDAR)])))$conf.int)
+```
+
+## Ranking plots
+
+We want to look at whether the signal in the promoter of a gene for both the 
+ATAC-seq and the WGBS are in the 'expected/correct' direction with respect to 
+the signal of the RNA-seq. E.g., we do not expect a differentially expressed
+gene with a positive logFC to a have a negative logFC in ATAC-seq data (or a positive meanDiff in the WGBS data) over a promoter of that gene.
+
+### Proportion of matching signs
+
+We first investigate this by plotting the proportion of 'expected/correct' 
+signs amonst the top-N most differentially expressed genes (ranked by P-value).
+
+(Top row all genes, bottom row zoomed in on top-3000 genes)
+
+#### ATAC-seq
+
+```{r}
+z_B <- rna_atac_meth %>%
+  mutate(B = rna_seq_de_pos$gene_level[
+    match(gene, rna_seq_de_pos$gene_level$gene_id), ]$B) %>%
+  group_by(gene) %>%
+  summarise(B = mean(B),
+            ss = sum(sign(unlist(pLogFC)) == sign(expLogFC)),
+            n = lengths(pLogFC)) %>%
+  ungroup() %>%
+  mutate(i = row_number(desc(B))) %>%
+  arrange(i)
+z_P <- rna_atac_meth %>%
+  mutate(P = rna_seq_de_pos$gene_level[
+    match(gene, rna_seq_de_pos$gene_level$gene_id), ]$adj.P.Val) %>%
+  group_by(gene) %>%
+  summarise(P = mean(P),
+            ss = sum(sign(unlist(pLogFC)) == sign(expLogFC)),
+            n = lengths(pLogFC)) %>%
+  ungroup() %>%
+  mutate(i = row_number(P)) %>%
+  arrange(i)
+par(mfrow = c(2, 2))
+plot(x = z_B$i, 
+     y = cumsum(z_B$ss) / cumsum(z_B$n), 
+     type = "s", 
+     ylim = c(0, 1), 
+     main = "All promoter ATAC-peaks", 
+     xlab = "Genes ranked by B", 
+     ylab = "Prop. same sign")
+abline(h = sum(z_B$ss) / sum(z_B$n), col = "red")
+plot(x = z_P$i, 
+     y = (cumsum(z_P$ss) / cumsum(z_P$n)), 
+     type = "s", 
+     ylim = c(0, 1), 
+     main = "All promoter ATAC-peaks", 
+     xlab = "DEGs ranked by P", 
+     ylab = "Prop. same sign")
+abline(h = sum(z_P$ss) / sum(z_P$n), col = "red")
+plot(x = z_B$i, 
+     y = cumsum(z_B$ss) / cumsum(z_B$n), 
+     type = "s", 
+     xlim = c(0, 3000),
+     ylim = c(0, 1), 
+     main = "All promoter ATAC-peaks", 
+     xlab = "Genes ranked by B", 
+     ylab = "Prop. same sign")
+abline(h = sum(z_B$ss) / sum(z_B$n), col = "red")
+plot(x = z_P$i, 
+     y = (cumsum(z_P$ss) / cumsum(z_P$n)), 
+     type = "s", 
+     xlim = c(0, 3000),
+     ylim = c(0, 1), 
+     main = "All promoter ATAC-peaks", 
+     xlab = "DEGs ranked by P", 
+     ylab = "Prop. same sign")
+abline(h = sum(z_P$ss) / sum(z_P$n), col = "red")
+```
+
+#### WGBS
+
+```{r}
+z_B <- rna_atac_meth %>%
+  mutate(B = rna_seq_de_pos$gene_level[
+    match(gene, rna_seq_de_pos$gene_level$gene_id), ]$B) %>%
+  group_by(gene) %>%
+  summarise(B = mean(B),
+            ss = sum(sign(unlist(pMeanDiff)) != sign(expLogFC)),
+            n = lengths(pMeanDiff)) %>%
+  ungroup() %>%
+  mutate(i = row_number(desc(B))) %>%
+  arrange(i)
+z_P <- rna_atac_meth %>%
+  mutate(P = rna_seq_de_pos$gene_level[
+    match(gene, rna_seq_de_pos$gene_level$gene_id), ]$adj.P.Val) %>%
+  group_by(gene) %>%
+  summarise(P = mean(P),
+            ss = sum(sign(unlist(pMeanDiff)) != sign(expLogFC)),
+            n = lengths(pMeanDiff)) %>%
+  ungroup() %>%
+  mutate(i = row_number(P)) %>%
+  arrange(i)
+par(mfrow = c(2, 2))
+plot(x = z_B$i, 
+     y = cumsum(z_B$ss) / cumsum(z_B$n), 
+     type = "s", 
+     ylim = c(0, 1), 
+     main = "All pDMRs", 
+     xlab = "Genes ranked by B", 
+     ylab = "Prop. same sign")
+abline(h = sum(z_B$ss) / sum(z_B$n), col = "red")
+plot(x = z_P$i, 
+     y = (cumsum(z_P$ss) / cumsum(z_P$n)), 
+     type = "s", 
+     ylim = c(0, 1), 
+     main = "All pDMRs", 
+     xlab = "DEGs ranked by P", 
+     ylab = "Prop. same sign")
+abline(h = sum(z_P$ss) / sum(z_P$n), col = "red")
+plot(x = z_B$i, 
+     y = cumsum(z_B$ss) / cumsum(z_B$n), 
+     type = "s", 
+     xlim = c(0, 3000),
+     ylim = c(0, 1), 
+     main = "All promoter ATAC-peaks", 
+     xlab = "Genes ranked by B", 
+     ylab = "Prop. same sign")
+abline(h = sum(z_B$ss) / sum(z_B$n), col = "red")
+plot(x = z_P$i, 
+     y = (cumsum(z_P$ss) / cumsum(z_P$n)), 
+     type = "s", 
+     xlim = c(0, 3000),
+     ylim = c(0, 1), 
+     main = "All promoter ATAC-peaks", 
+     xlab = "DEGs ranked by P", 
+     ylab = "Prop. same sign")
+abline(h = sum(z_P$ss) / sum(z_P$n), col = "red")
+```
+
+### Proportion of discordant signs
+
+If a gene is not differentially expressed, then there should be a 50:50 chance 
+that the observed logFC is positive or negative. A similar argument can be 
+made for a ATAC-seq peak that is not differentially expressed. Therefore, the 
+above plot where we requireme that the signs match may be too stringent.
+Instead, here we only count a pair as discordant if the ATAC-seq peak is a DAR 
+and it has an 'unexpected' sign.
+
+#### ATAC-seq
+
+```{r}
+# z = 1 if all peaks are non-DARs or DAR sign(logFC) matches RNA-seq 
+# sign(logFC); 0 otherwise
+
+par(mfrow = c(1, 2))
+P <- rna_atac_meth %>%
+  mutate(P = rna_seq_de_pos$gene_level[
+    match(gene, rna_seq_de_pos$gene_level$gene_id), ]$adj.P.Val) %>%
+  group_by(gene) %>%
+  summarise(P = mean(P),
+            z = ifelse(all(!unlist(pDAR)), 
+                       1, ifelse(all(sign(unlist(pLogFC)[unlist(pDAR)]) == 
+                                       sign(expLogFC)), 1, 0))) %>%
+  ungroup() %>%
+  mutate(i = row_number(P)) %>%
+  arrange(i)
+
+plot(x = P$i, 
+     y = cummean(P$z), 
+     type = "s",
+     ylim = c(0, 1), 
+     xlab = "Gene ranked by P",
+     ylab = "Prop. no wrong sign",
+     main = "ATAC: All genes")
+
+P <- rna_atac_meth %>%
+  filter(sapply(pDAR, any)) %>%
+  mutate(P = rna_seq_de_pos$gene_level[
+    match(gene, rna_seq_de_pos$gene_level$gene_id), ]$adj.P.Val) %>%
+  group_by(gene) %>%
+  summarise(P = mean(P),
+            z = ifelse(all(!unlist(pDAR)), 
+                       1, ifelse(all(sign(unlist(pLogFC)[unlist(pDAR)]) == 
+                                       sign(expLogFC)), 1, 0))) %>%
+  ungroup() %>%
+  mutate(i = row_number(P)) %>%
+  arrange(i)
+
+plot(x = P$i, 
+     y = cummean(P$z), 
+     type = "s",
+     ylim = c(0, 1), 
+     xlab = "Gene ranked by P",
+     ylab = "Prop. no wrong sign",
+     main = "ATAC: Genes with pDARs")
+```
+
+#### WGBS
+
+```{r}
+# z = 1 if no DMRs or DMR sign(meanDiff) is opposite to RNA-seq 
+# sign(logFC); 0 otherwise
+
+par(mfrow = c(1, 2))
+P <- rna_atac_meth %>%
+  mutate(P = rna_seq_de_pos$gene_level[
+    match(gene, rna_seq_de_pos$gene_level$gene_id), ]$adj.P.Val) %>%
+  group_by(gene) %>%
+  summarise(P = mean(P),
+            z = ifelse(all(!unlist(pDMR)), 
+                       1, ifelse(all(sign(unlist(pMeanDiff)[unlist(pDMR)]) != 
+                                       sign(expLogFC)), 1, 0))) %>%
+  ungroup() %>%
+  mutate(i = row_number(P)) %>%
+  arrange(i)
+
+plot(x = P$i, 
+     y = cummean(P$z), 
+     type = "s",
+     ylim = c(0, 1), 
+     xlab = "Gene ranked by P",
+     ylab = "Prop. no wrong sign",
+     main = "WGBS: All genes")
+
+P <- rna_atac_meth %>%
+  filter(sapply(pDMR, any)) %>%
+  mutate(P = rna_seq_de_pos$gene_level[
+    match(gene, rna_seq_de_pos$gene_level$gene_id), ]$adj.P.Val) %>%
+  group_by(gene) %>%
+  summarise(P = mean(P),
+            z = ifelse(all(!unlist(pDMR)), 
+                       1, ifelse(all(sign(unlist(pMeanDiff)[unlist(pDMR)]) != 
+                                       sign(expLogFC)), 1, 0))) %>%
+  ungroup() %>%
+  mutate(i = row_number(P)) %>%
+  arrange(i)
+
+plot(x = P$i, 
+     y = cummean(P$z), 
+     type = "s",
+     ylim = c(0, 1), 
+     xlab = "Gene ranked by P",
+     ylab = "Prop. no wrong sign",
+     main = "WGBS: Genes with pDMRs")
+```
+
+#### WGBS & ATAC-seq
+
+```{r}
+# Combining both
+
+par(mfrow = c(1, 1))
+P <- rna_atac_meth %>%
+  mutate(P = rna_seq_de_pos$gene_level[
+    match(gene, rna_seq_de_pos$gene_level$gene_id), ]$adj.P.Val) %>%
+  group_by(gene) %>%
+  summarise(P = mean(P),
+            z = ifelse(all(!unlist(pDMR)), 
+                       1, ifelse(all(sign(unlist(pMeanDiff)[unlist(pDMR)]) != 
+                                       sign(expLogFC)), 1, 0)) & 
+              ifelse(all(!unlist(pDAR)), 
+                     1, ifelse(all(sign(unlist(pLogFC)[unlist(pDAR)]) == 
+                                     sign(expLogFC)), 1, 0))) %>%
+  ungroup() %>%
+  mutate(i = row_number(P)) %>%
+  arrange(i)
+
+plot(x = P$i, 
+     y = cummean(P$z), 
+     type = "s",
+     ylim = c(0, 1), 
+     xlab = "Gene ranked by P",
+     ylab = "Prop. no wrong sign",
+     main = "WGBS & ATAC: All genes")
+```
+
+
+### Summary
+
+At first glance, it appears that promoter differential methylation is more informative than promoter differential chromatin accessibility. However, for methylation we're only considering DMRs, whereas for ATAC-seq data we are 
+considering all peaks regardless of whether they are DARs or not.
+
+## DARs near genes
+
+Take all DARs near genes and plot RNA-seq logFC vs. ATAC-seq logFC; here we 
+take 'near' to be 0 kb (overlapping gene body), 1 kb, 10 kb, and 100 kb.
+
+```{r}
+par(mfrow = c(2, 2))
+for (gap in c(0, 1000, 10000, 100000)) {
+  ol <- findOverlaps(dars_pos, gencode_features$genes, maxgap = gap)
+  tmp <- data.frame(x = dars_pos$logFC[queryHits(ol)],
+                    y = rna_seq_de_pos$gene_level$logFC[
+                      match(names(gencode_features$genes[subjectHits(ol)]),
+                            rna_seq_de_pos$gene_level$gene_id)],
+                    gene_id = names(gencode_features$genes[subjectHits(ol)]))
+  plot(y ~ x, 
+       data = tmp,
+       xlab = "ATAC-seq (logFC)", 
+       ylab = "RNA-seq (logFC)",
+       main = paste0("NA_pos vs BA9_pos (PC genes): cor = ",
+                     round(cor(tmp$x, tmp$y, use = "complete.obs"), 2)),
+       xlim = c(-3, 3),
+       ylim = c(-10, 10),
+       sub = paste0("gap = ", gap, ", n = ", sum(complete.cases(tmp))),
+       col = ifelse(tmp$gene_id %in% deg_names, alpha("orange", 0.3), 
+                    alpha("black", 0.3)),
+       pch = 16)
+  legend("topleft",
+         legend = c("DEG", "non-DEG"),
+         pch = c(16, 16),
+         col = c("orange", "black"),
+         bty = "n")
+}
+```

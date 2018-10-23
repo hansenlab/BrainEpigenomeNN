@@ -1,0 +1,8 @@
+figures/NA_pos_vs_BA9_pos.CG-DMR_regions.plotRegion2.pdf
+figures/NA_pos_vs_BA9_pos.DAP_regions.plotRegion2.pdf
+figures/NA_pos_vs_BA9_pos.pos_CH-DMR_regions.plotRegion2.pdf
+figures/NA_pos_vs_BA9_pos.neg_CH-DMR_regions.plotRegion2.pdf
+NA_pos_vs_BA9_pos.unstranded_CH-DMR_regions.plotRegion2.pdf
+objects/bins.100kb.rds
+objects/bins.10kb.rds
+objects/bins.1kb.rds

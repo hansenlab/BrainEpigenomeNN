@@ -1,0 +1,774 @@
+---
+title: "Context and enrichment/depetion of DMRs and DARs with respect to GENCODE features"
+author: "Peter Hickey"
+date: "4 July 2016"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE, setup}
+knitr::opts_chunk$set(echo = FALSE, comment = "#>", collapse = TRUE, 
+                      message = FALSE, results = "hide", warning = FALSE)
+load("../objects/assays-and-features.rda")
+source("../scripts/functions.R")
+```
+
+```{r, message = FALSE, pkgs}
+library(GenomicRanges)
+library(rtracklayer)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(UpSetR)
+
+big_dars_pos <- dars_pos[abs(dars_pos$logFC) > 1]
+```
+
+# Genomic context of DMRs and bigDMRs
+
+Using all POS DMRs
+
+## DMRs
+
+`r knitr::kable(data.frame(percentage = 100 * colSums(genomicContext(dmrs_pos)) / length(dmrs_pos)))`
+
+```{r, DMRs-genomic-context}
+feature_names <- names(gencode_features$union)
+dmrs_pos_hits <- unlist(lapply(feature_names, function(feature_name) {
+  lapply(gencode_features[c("union", "pc_transcripts", "lnc_transcripts")],
+         function(db) {
+           setNames(sum(overlapsAny(dmrs_pos,
+                                    db[[feature_name]])), feature_name)
+         })
+}))
+dmrs_pos_hits_df <- data.frame(db = sapply(strsplit(names(dmrs_pos_hits),
+                                                    "\\."), "[[", 1L),
+                               feature = sapply(strsplit(names(dmrs_pos_hits),
+                                                         "\\."), "[[", 2L),
+                               hits = unname(dmrs_pos_hits),
+                               perc = 100 * unname(dmrs_pos_hits) /
+                                 length(dmrs_pos),
+                               stringsAsFactors = FALSE)
+split(dmrs_pos_hits_df, dmrs_pos_hits_df$db)
+x <- makeUpSetRList(dmrs_pos,
+                    list(pc = gencode_features$pc_transcripts$genic,
+                         lnc = gencode_features$lnc_transcripts$genic,
+                         intergenic = gencode_features$union$intergenic,
+                         promoter = gencode_features$union$promoter,
+                         five_utr = gencode_features$union$five_utr,
+                         exonic = gencode_features$union$exonic,
+                         intronic = gencode_features$union$intronic,
+                         three_utr = gencode_features$union$three_utr))
+upset(fromList(x), order.by = "freq", nsets = length(x),
+      sets = c("pc", "lnc", "intergenic"))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## DMR-CpGs
+
+Counting CpGs in DMRs rather than number of DMRs
+
+`r knitr::kable(data.frame(percentage = 100 * colSums(genomicContext(dmrs_pos_cpgs)) / length(dmrs_pos_cpgs)))`
+
+```{r, DMR-CpGs-genomic-context}
+feature_names <- names(gencode_features$union)
+dmrs_pos_cpgs_hits <- unlist(lapply(feature_names, function(feature_name) {
+  lapply(gencode_features[c("union", "pc_transcripts", "lnc_transcripts")],
+         function(db) {
+           setNames(sum(overlapsAny(dmrs_pos_cpgs,
+                                    db[[feature_name]])), feature_name)
+         })
+}))
+dmrs_cpgs_hits_df <- data.frame(db = sapply(strsplit(names(dmrs_pos_cpgs_hits),
+                                                     "\\."), "[[", 1L),
+                                feature = sapply(strsplit(names(dmrs_pos_cpgs_hits),
+                                                          "\\."), "[[", 2L),
+                                hits = unname(dmrs_pos_cpgs_hits),
+                                perc = 100 * unname(dmrs_pos_cpgs_hits) /
+                                  length(dmrs_pos_cpgs),
+                                stringsAsFactors = FALSE)
+split(dmrs_cpgs_hits_df, dmrs_cpgs_hits_df$db)
+x <- makeUpSetRList(dmrs_pos_cpgs,
+                    list(pc = gencode_features$pc_transcripts$genic,
+                         lnc = gencode_features$lnc_transcripts$genic,
+                         intergenic = gencode_features$union$intergenic,
+                         promoter = gencode_features$union$promoter,
+                         five_utr = gencode_features$union$five_utr,
+                         exonic = gencode_features$union$exonic,
+                         intronic = gencode_features$union$intronic,
+                         three_utr = gencode_features$union$three_utr))
+upset(fromList(x), order.by = "freq", nsets = length(x),
+      sets = c("pc", "lnc", "intergenic"))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## bigDMRs
+
+`r knitr::kable(data.frame(percentage = 100 * colSums(genomicContext(big_dmrs_pos)) / length(big_dmrs_pos)))`
+
+```{r, bigDMRs-genomic-context}
+feature_names <- names(gencode_features$union)
+big_dmrs_pos_hits <- unlist(lapply(feature_names, function(feature_name) {
+  lapply(gencode_features[c("union", "pc_transcripts", "lnc_transcripts")],
+         function(db) {
+           setNames(sum(overlapsAny(big_dmrs_pos,
+                                    db[[feature_name]])), feature_name)
+         })
+}))
+big_dmrs_pos_hits_df <- data.frame(db =
+                                     sapply(strsplit(names(big_dmrs_pos_hits),
+                                                     "\\."), "[[", 1L),
+                                   feature = 
+                                     sapply(strsplit(names(big_dmrs_pos_hits),
+                                                     "\\."), "[[", 2L),
+                                   hits = unname(big_dmrs_pos_hits),
+                                   perc = 100 * unname(big_dmrs_pos_hits) /
+                                     length(big_dmrs_pos),
+                                   stringsAsFactors = FALSE)
+split(big_dmrs_pos_hits_df, big_dmrs_pos_hits_df$db)
+x <- makeUpSetRList(big_dmrs_pos,
+                    list(pc = gencode_features$pc_transcripts$genic,
+                         lnc = gencode_features$lnc_transcripts$genic,
+                         intergenic = gencode_features$union$intergenic,
+                         promoter = gencode_features$union$promoter,
+                         five_utr = gencode_features$union$five_utr,
+                         exonic = gencode_features$union$exonic,
+                         intronic = gencode_features$union$intronic,
+                         three_utr = gencode_features$union$three_utr))
+upset(fromList(x), order.by = "freq", nsets = length(x),
+      sets = c("pc", "lnc", "intergenic"))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## bigDMR-CpGs
+
+Counting CpGs in bigDMRs rather than number of bigDMRs
+
+`r knitr::kable(data.frame(percentage = 100 * colSums(genomicContext(big_dmrs_pos_cpgs)) / length(big_dmrs_pos_cpgs)))`
+
+```{r, bigDMR-CpGs-genomic-context}
+feature_names <- names(gencode_features$union)
+big_dmrs_pos_cpgs_hits <- unlist(lapply(feature_names, function(feature_name) {
+  lapply(gencode_features[c("union", "pc_transcripts", "lnc_transcripts")],
+         function(db) {
+           setNames(sum(overlapsAny(big_dmrs_pos_cpgs,
+                                    db[[feature_name]])), feature_name)
+         })
+}))
+big_dmrs_pos_cpgs_hits_df <-
+  data.frame(db = sapply(strsplit(names(big_dmrs_pos_cpgs_hits),
+                                  "\\."),
+                         "[[", 1L),
+             feature = sapply(strsplit(names(big_dmrs_pos_cpgs_hits),
+                                       "\\."),
+                              "[[", 2L),
+             hits = unname(big_dmrs_pos_cpgs_hits),
+             perc = 100 * unname(big_dmrs_pos_cpgs_hits) /
+               length(big_dmrs_pos_cpgs),
+             stringsAsFactors = FALSE)
+split(big_dmrs_pos_cpgs_hits_df, big_dmrs_pos_cpgs_hits_df$db)
+x <- makeUpSetRList(big_dmrs_pos_cpgs,
+                    list(pc = gencode_features$pc_transcripts$genic,
+                         lnc = gencode_features$lnc_transcripts$genic,
+                         intergenic = gencode_features$union$intergenic,
+                         promoter = gencode_features$union$promoter,
+                         five_utr = gencode_features$union$five_utr,
+                         exonic = gencode_features$union$exonic,
+                         intronic = gencode_features$union$intronic,
+                         three_utr = gencode_features$union$three_utr))
+upset(fromList(x), order.by = "freq", nsets = length(x),
+      sets = c("pc", "lnc", "intergenic"))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+# Genomic context of OCRs, DARs, and bigDARs
+
+Using 'overall' peaks and 'NApos vs. BA9pos' DARs.
+
+## OCRs
+
+`r knitr::kable(data.frame(percentage = 100 * colSums(genomicContext(ocrs_overall)) / length(ocrs_overall)))`
+
+```{r, ATAC-peaks-genomic-context}
+feature_names <- names(gencode_features$union)
+ocr_hits <- unlist(lapply(feature_names, function(feature_name) {
+  lapply(gencode_features[c("union", "pc_transcripts", "lnc_transcripts")],
+         function(db) {
+           setNames(sum(overlapsAny(ocrs_overall,
+                                    db[[feature_name]])), feature_name)
+         })
+}))
+ocr_hits_df <- data.frame(db = sapply(strsplit(names(ocr_hits),
+                                                     "\\."), "[[", 1L),
+                                feature = 
+                                  sapply(strsplit(names(ocr_hits),
+                                                  "\\."), "[[", 2L),
+                                hits = unname(ocr_hits),
+                                perc = 100 * unname(ocr_hits) /
+                                  length(ocrs_overall),
+                                stringsAsFactors = FALSE)
+split(ocr_hits_df, ocr_hits_df$db)
+x <- makeUpSetRList(ocrs_overall,
+                    list(pc = gencode_features$pc_transcripts$genic,
+                         lnc = gencode_features$lnc_transcripts$genic,
+                         intergenic = gencode_features$union$intergenic,
+                         promoter = gencode_features$union$promoter,
+                         five_utr = gencode_features$union$five_utr,
+                         exonic = gencode_features$union$exonic,
+                         intronic = gencode_features$union$intronic,
+                         three_utr = gencode_features$union$three_utr))
+upset(fromList(x), order.by = "freq", nsets = length(x),
+      sets = c("pc", "lnc", "intergenic"))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## DARs
+
+`r knitr::kable(data.frame(percentage = 100 * colSums(genomicContext(dars_pos)) / length(dars_pos)))`
+
+```{r, DAR-genomic-context}
+feature_names <- names(gencode_features$union)
+dap_hits <- unlist(lapply(feature_names, function(feature_name) {
+  lapply(gencode_features[c("union", "pc_transcripts", "lnc_transcripts")],
+         function(db) {
+           setNames(sum(overlapsAny(dars_pos, db[[feature_name]])), feature_name)
+         })
+}))
+dap_hits_df <- data.frame(db = sapply(strsplit(names(dap_hits), "\\."),
+                                      "[[", 1L),
+                          feature = sapply(strsplit(names(dap_hits), "\\."),
+                                           "[[", 2L),
+                          hits = unname(dap_hits),
+                          perc = 100 * unname(dap_hits) / length(dars_pos),
+                          stringsAsFactors = FALSE)
+split(dap_hits_df, dap_hits_df$db)
+x <- makeUpSetRList(dars_pos,
+                    list(pc = gencode_features$pc_transcripts$genic,
+                         lnc = gencode_features$lnc_transcripts$genic,
+                         intergenic = gencode_features$union$intergenic,
+                         promoter = gencode_features$union$promoter,
+                         five_utr = gencode_features$union$five_utr,
+                         exonic = gencode_features$union$exonic,
+                         intronic = gencode_features$union$intronic,
+                         three_utr = gencode_features$union$three_utr))
+upset(fromList(x), order.by = "freq", nsets = length(x),
+      sets = c("pc", "lnc", "intergenic"))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## bigDARs
+
+`r knitr::kable(data.frame(percentage = 100 * colSums(genomicContext(big_dars_pos)) / length(big_dars_pos)))`
+
+```{r, bigDAR-genomic-context}
+big_dars_pos <- dars_pos[abs(dars_pos$logFC) > 1]
+big_dap_hits <- unlist(lapply(feature_names, function(feature_name) {
+  lapply(gencode_features[c("union", "pc_transcripts", "lnc_transcripts")],
+         function(db) {
+           setNames(sum(overlapsAny(big_dars_pos, db[[feature_name]])), feature_name)
+         })
+}))
+big_dap_hits_df <- data.frame(db = sapply(strsplit(names(big_dap_hits), "\\."),
+                                          "[[", 1L),
+                              feature = sapply(strsplit(names(big_dap_hits), "\\."),
+                                               "[[", 2L),
+                              hits = unname(big_dap_hits),
+                              perc = 100 * unname(big_dap_hits) / length(big_dars_pos),
+                              stringsAsFactors = FALSE)
+split(big_dap_hits_df, big_dap_hits_df$db)
+x <- makeUpSetRList(big_dars_pos,
+                    list(pc = gencode_features$pc_transcripts$genic,
+                         lnc = gencode_features$lnc_transcripts$genic,
+                         intergenic = gencode_features$union$intergenic,
+                         promoter = gencode_features$union$promoter,
+                         five_utr = gencode_features$union$five_utr,
+                         exonic = gencode_features$union$exonic,
+                         intronic = gencode_features$union$intronic,
+                         three_utr = gencode_features$union$three_utr))
+upset(fromList(x), order.by = "freq", nsets = length(x),
+      sets = c("pc", "lnc", "intergenic"))
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+# Genomic enrichment/depletion of DMR-CpGs and bigDMR-CpGs
+
+We initially consider all genes in GENCODE and then stratify by whether the 
+gene is a DEG or a non-DEG.
+
+## Using DMRs vs. DMR-CpGs is misleading for enrichment analyses
+
+It's very misleading to use "DMRs" vs. "non-DMRs" for enrichment/depletion
+analysis unless the regions are defined _a priori_ and "non-DMRs" aren't simply
+`gaps(DMRs)`. It is better to use the number of CpGs in DMRs vs. the number of
+CpGs outside of DMRs. This can be seen in the below figure; we only use
+"DMR-CpGs" vs. "non-DMR-CpGs" in the remaining analyses.
+
+```{r}
+or_dmrs_pos_gencode <- cbind(
+  rbind(FT(dmrs_pos, non_dmrs_pos, gencode_features$union, "union"),
+        FT(dmrs_pos, non_dmrs_pos, gencode_features$pc_transcripts, "PC"),
+        FT(dmrs_pos, non_dmrs_pos, gencode_features$lnc_transcripts, "lncRNA")),
+  data.frame(source = factor("DMRs",
+                             c("DMRs", "bigDMRs", "DMR-CpGs", "bigDMR-CpGs"))))
+or_big_dmrs_pos_gencode <- cbind(
+  rbind(FT(big_dmrs_pos, non_big_dmrs_pos, gencode_features$union, "union"),
+        FT(big_dmrs_pos, non_big_dmrs_pos, gencode_features$pc_transcripts, "PC"),
+        FT(big_dmrs_pos, non_big_dmrs_pos,
+           gencode_features$lnc_transcripts, "lncRNA")),
+  data.frame(source = factor("bigDMRs",
+                             c("DMRs", "bigDMRs", "DMR-CpGs", "bigDMR-CpGs"))))
+or_dmrs_pos_cpgs_gencode <- cbind(
+  rbind(FT(dmrs_pos_cpgs, non_dmrs_pos_cpgs, gencode_features$union, "union"),
+        FT(dmrs_pos_cpgs, non_dmrs_pos_cpgs, gencode_features$pc_transcripts, "PC"),
+        FT(dmrs_pos_cpgs, non_dmrs_pos_cpgs,
+           gencode_features$lnc_transcripts, "lncRNA")),
+  data.frame(source = factor("DMR-CpGs",
+                             c("DMRs", "bigDMRs", "DMR-CpGs", "bigDMR-CpGs"))))
+or_big_dmrs_pos_cpgs_gencode <- cbind(
+  rbind(FT(big_dmrs_pos_cpgs, non_big_dmrs_pos_cpgs,
+           gencode_features$union, "union"),
+        FT(big_dmrs_pos_cpgs, non_big_dmrs_pos_cpgs,
+           gencode_features$pc_transcripts, "PC"),
+        FT(big_dmrs_pos_cpgs, non_big_dmrs_pos_cpgs,
+           gencode_features$lnc_transcripts, "lncRNA")),
+  data.frame(source = factor("bigDMR-CpGs",
+                             c("DMRs", "bigDMRs", "DMR-CpGs", "bigDMR-CpGs"))))
+ggplot(rbind(or_dmrs_pos_gencode, or_big_dmrs_pos_gencode, or_dmrs_pos_cpgs_gencode,
+             or_big_dmrs_pos_cpgs_gencode),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_wrap(~ source, ncol = 2) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("All genes") +
+  ylab("log2(OR) with 95% CI")
+```
+
+## Using all genes
+
+```{r}
+ggplot(rbind(or_dmrs_pos_cpgs_gencode, or_big_dmrs_pos_cpgs_gencode),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_wrap(~ source, ncol = 2) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DMR-CpGs vs. non-DMR-CpGs (all genes)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+### DMR-CpGs
+
+**Union**
+
+- Enriched in exonic, genic, intronic, promoter, and 3' UTR regions
+- Little-to-no enrichment in 5' UTR regions
+- Depleted in intergenic regions
+
+**PC transcripts**
+
+- Overall, nearly identical to union
+
+**lncRNA transcripts**
+
+- Overall, broadly similar to union
+- Weaker enrichment/depletion (near zero) in genic, intergenic, and intronic regions
+
+### bigDMR-CpGs
+
+**Union, PC transcripts, lncRNA transcripts**
+
+- Same overall trend as DMR-CpGs with slightly wider CIs
+- Slightly weaker enrichment/depletion in exonic, promoter, and 3' UTR regions
+
+
+### PC-intergenic DMRs
+
+Of the DMRs that are wholly intergenic (wrt PC genes), where do they hit wrt lncRNA genes?
+
+```{r}
+intergenic_dmrs_pos <-
+  subsetByOverlaps(subsetByOverlaps(dmrs_pos,
+                                    c(gencode_features$pc_transcripts$promoter,
+                                      gencode_features$pc_transcripts$five_utr,
+                                      gencode_features$pc_transcripts$exonic,
+                                      gencode_features$pc_transcripts$three_utr),
+                                    invert = TRUE),
+                   gencode_features$pc_transcripts$intergenic,
+                   type = "within")
+intergenic_dmrs_pos_ep <-
+  subsetByOverlaps(intergenic_dmrs_pos,
+                   c(gencode_features$lnc_transcripts$promoter,
+                     gencode_features$lnc_transcripts$exonic))
+intergenic_dmrs_pos_intronic <-
+  subsetByOverlaps(subsetByOverlaps(intergenic_dmrs_pos,
+                                    intergenic_dmrs_pos_ep,
+                                    invert = TRUE),
+                   gencode_features$lnc_transcripts$intronic,
+                   type = "within")
+```
+
+- `r 100 * length(intergenic_dmrs_pos_ep) / length(intergenic_dmrs_pos)`% of wholly PC-intergenic DMRs overlap lncRNA exons and promoters
+- `r 100 * length(intergenic_dmrs_pos_intronic) / length(intergenic_dmrs_pos)`% of wholly PC-intergenic DMRs are wholly within introns
+
+```{r}
+FT(subsetByOverlaps(cpgs, intergenic_dmrs_pos),
+   subsetByOverlaps(cpgs, intergenic_dmrs_pos, invert = TRUE),
+   list("promoter_exon" = reduce(c(gencode_features$lnc_transcripts$promoter,
+                                   gencode_features$lnc_transcripts$exonic)),
+        "intronic" = gencode_features$lnc_transcripts$intronic),
+   "lncRNA")
+```
+
+## Focusing on DEGs (NA_pos vs. BA9_pos)
+
+Same plots as above, but using comparisons of NA_pos vs. BA9_pos and restricted 
+to DEGs
+
+```{r}
+or_dmrs_NAvsBA9pos_cpgs_gencode_degs <- cbind(
+  rbind(FT(dmrs_NAvsBA9pos_cpgs, non_dmrs_NAvsBA9pos_cpgs, deg_flattened_features_union,
+           "DEGs-union"),
+        FT(dmrs_NAvsBA9pos_cpgs, non_dmrs_NAvsBA9pos_cpgs, deg_flattened_features_pc, "DEGs-PC"),
+        FT(dmrs_NAvsBA9pos_cpgs, non_dmrs_NAvsBA9pos_cpgs, deg_flattened_features_lnc,
+           "DEGs-lncRNA")),
+  data.frame(source = factor("DMR-CpGs", c("DMR-CpGs", "bigDMR-CpGs"))))
+or_big_dmrs_NAvsBA9pos_cpgs_gencode_degs <- cbind(
+  rbind(FT(big_dmrs_NAvsBA9pos_cpgs, non_big_dmrs_NAvsBA9pos_cpgs, deg_flattened_features_union,
+           "DEGs-union"),
+        FT(big_dmrs_NAvsBA9pos_cpgs, non_big_dmrs_NAvsBA9pos_cpgs, deg_flattened_features_pc,
+           "DEGs-PC"),
+        FT(big_dmrs_NAvsBA9pos_cpgs, non_big_dmrs_NAvsBA9pos_cpgs, deg_flattened_features_lnc,
+           "DEGs-lncRNA")),
+  data.frame(source = factor("bigDMR-CpGs", c("DMR-CpGs", "bigDMR-CpGs"))))
+ggplot(rbind(or_dmrs_NAvsBA9pos_cpgs_gencode_degs, or_big_dmrs_NAvsBA9pos_cpgs_gencode_degs),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DMR-CpGs vs. non-DMR-CpGs (DEGs)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+### DMR-CpGs
+
+**Union**
+
+- Enriched in all categories (recall this plot excludes intergenic)
+- Strongest enrichment in promoter and 3' UTR regions
+
+**PC transcripts**
+
+  - Overall, nearly identical to union
+
+**lncRNA transcripts**
+
+- Overall, broadly similar to union
+- Stronger enrichment in exonic and promoter regions
+- Weaker enrichment in genic and intronic regions
+
+### bigDMR-CpGs
+
+**Union and PC transcripts**
+
+- Same overall trend as DMR-CpGs with slightly wider CIs
+- Slightly weaker enrichment/depletion in exonic, promoter, and 3' UTR regions
+
+**lncRNA transcripts**
+
+- Same overall trend as DMR-CpGs with wider CIs
+- Weaker enrichment in exonic and promoter regions
+
+## Focusing on non-DEGs
+
+Same plots as above, but using comparisons of NA_pos vs. BA9_pos and restricted to non-DEGs
+
+```{r}
+or_dmrs_NAvsBA9pos_cpgs_gencode_non_degs <- cbind(
+  rbind(FT(dmrs_NAvsBA9pos_cpgs, non_dmrs_NAvsBA9pos_cpgs, non_deg_flattened_features_union,
+           "non-DEGs-union"),
+        FT(dmrs_NAvsBA9pos_cpgs, non_dmrs_NAvsBA9pos_cpgs, 
+           non_deg_flattened_features_pc, "non-DEGs-PC"),
+        FT(dmrs_NAvsBA9pos_cpgs, non_dmrs_NAvsBA9pos_cpgs, 
+           non_deg_flattened_features_lnc,
+           "non-DEGs-lncRNA")),
+  data.frame(source = factor("DMR-CpGs", c("DMR-CpGs", "bigDMR-CpGs"))))
+or_big_dmrs_NAvsBA9pos_cpgs_gencode_non_degs <- cbind(
+  rbind(FT(big_dmrs_NAvsBA9pos_cpgs, non_big_dmrs_NAvsBA9pos_cpgs, non_deg_flattened_features_union,
+           "non-DEGs-union"),
+        FT(big_dmrs_NAvsBA9pos_cpgs, non_big_dmrs_NAvsBA9pos_cpgs, non_deg_flattened_features_pc,
+           "non-DEGs-PC"),
+        FT(big_dmrs_NAvsBA9pos_cpgs, non_big_dmrs_NAvsBA9pos_cpgs, non_deg_flattened_features_lnc,
+           "non-DEGs-lncRNA")),
+  data.frame(source = factor("bigDMR-CpGs", c("DMR-CpGs", "bigDMR-CpGs"))))
+ggplot(rbind(or_dmrs_NAvsBA9pos_cpgs_gencode_non_degs, or_big_dmrs_NAvsBA9pos_cpgs_gencode_non_degs),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DMR-CpGs vs. non-DMR-CpGs (non-DEGs)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+### DMR-CpGs
+
+**Union**
+
+- Enriched all categories except 5' UTR regions (recall this plot excludes intergenic)
+- Enrichment is less strong than in DEGs
+
+**PC transcripts**
+
+  - Overall, fairly similar to union
+
+**lncRNA transcripts**
+
+- Overall, broadly similar to union
+- Weaker enrichment in exonic and promoter regions
+- Depleted in genic, intronic, and (non-lncRNA) promoter regions
+
+### bigDMR-CpGs
+
+**Union, PC transcripts, and lncRNA transcripts**
+
+- Same overall trend as DMR-CpGs with wider CIs
+- Slightly weaker enrichment/depletion in exonic, promoter, and 3' UTR regions
+
+# Genomic enrichment/depletion of OCRs, DARs, and bigDARs
+
+We initially consider all genes in GENCODE and then stratify by whether the 
+gene is a DEG or a non-DEG.
+
+We consider enrichment of:
+
+1. Peaks vs. rest of genome
+2. DARS vs. rest of genome
+    a. bigDARs vs. rest of genome
+3. DARs vs. null-peaks
+    a. bigDARs vs. null-peaks
+
+We consider two different ways to calculate enrichment using ATAC-seq data:
+
+A. Counting peaks (only 3, 4)
+B. Counting bases (1, 2, 3, 4)
+
+## Counting peaks
+
+### DARs vs. null-peaks
+
+#### Using all genes
+
+```{r}
+null_peaks <- subsetByOverlaps(ocrs_overall, dars_pos, invert = TRUE)
+or_dars_pos_vs_null_gencode <- cbind(
+  rbind(FT(dars_pos, null_peaks, gencode_features$union, "union"),
+        FT(dars_pos, null_peaks, gencode_features$pc_transcripts, "PC"),
+        FT(dars_pos, null_peaks, gencode_features$lnc_transcripts, "lncRNA")),
+  data.frame(source = factor("DARs", c("DARs", "bigDARs"))))
+or_big_dars_pos_vs_null_gencode <- cbind(
+  rbind(FT(big_dars_pos, null_peaks, gencode_features$union, "union"),
+        FT(big_dars_pos, null_peaks, gencode_features$pc_transcripts, "PC"),
+        FT(big_dars_pos, null_peaks, gencode_features$lnc_transcripts, "lncRNA")),
+  data.frame(source = factor("bigDARs", c("DARs", "bigDARs"))))
+ggplot(rbind(or_dars_pos_vs_null_gencode, or_big_dars_pos_vs_null_gencode),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. null-peaks (all genes)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+#### Focusing on DEGs
+
+```{r}
+or_dars_pos_vs_null_gencode_degs <- cbind(
+  rbind(FT(dars_pos, null_peaks, deg_flattened_features_union, "DEGs-union"),
+        FT(dars_pos, null_peaks, deg_flattened_features_pc, "DEGs-PC"),
+        FT(dars_pos, null_peaks, deg_flattened_features_lnc, "DEGs-lncRNA")),
+  data.frame(source = factor("DARs", c("DARs", "bigDARs"))))
+or_big_dars_pos_vs_null_gencode_degs <- cbind(
+  rbind(FT(big_dars_pos, null_peaks, deg_flattened_features_union, "DEGs-union"),
+        FT(big_dars_pos, null_peaks, deg_flattened_features_pc, "DEGs-PC"),
+        FT(big_dars_pos, null_peaks, deg_flattened_features_lnc, "DEGs-lncRNA")),
+  data.frame(source = factor("bigDARs", c("DARs", "bigDARs"))))
+ggplot(rbind(or_dars_pos_vs_null_gencode_degs, or_big_dars_pos_vs_null_gencode_degs),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. null-peaks (DEGs)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+#### Focusing on non-DEGs
+
+```{r}
+or_dars_pos_vs_null_gencode_non_degs <- cbind(
+  rbind(FT(dars_pos, null_peaks, non_deg_flattened_features_union,
+           "non-DEGs-union"),
+        FT(dars_pos, null_peaks, non_deg_flattened_features_pc,
+           "non-DEGs-PC"),
+        FT(dars_pos, null_peaks, non_deg_flattened_features_lnc,
+           "non-DEGs-lncRNA")),
+  data.frame(source = factor("DARs", c("DARs", "bigDARs"))))
+or_big_dars_pos_vs_null_gencode_non_degs <- cbind(
+  rbind(FT(big_dars_pos, null_peaks, non_deg_flattened_features_union,
+           "non-DEGs-union"),
+        FT(big_dars_pos, null_peaks, non_deg_flattened_features_pc,
+           "non-DEGs-PC"),
+        FT(big_dars_pos, null_peaks, non_deg_flattened_features_lnc,
+           "non-DEGs-lncRNA")),
+  data.frame(source = factor("bigDARs", c("DARs", "bigDARs"))))
+ggplot(rbind(or_dars_pos_vs_null_gencode_non_degs, 
+             or_big_dars_pos_vs_null_gencode_non_degs),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. null-peaks (non-DEGs)") +
+  ylab("log2(OR) with 95% CI")
+```
+## Counting bases
+
+### Peaks vs. rest of genome
+
+```{r}
+or_bp_peaks_gencode <- cbind(
+  rbind(FT2(ocrs_overall, gencode_features$union, "union", sl),
+        FT2(ocrs_overall, gencode_features$pc_transcripts, "PC", sl),
+        FT2(ocrs_overall, gencode_features$lnc_transcripts, "lncRNA", sl)),
+  data.frame(source = "peaks"))
+ggplot(or_bp_peaks_gencode,
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("Peaks vs. rest of genome (bp)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+### DARS vs. rest of genome
+
+```{r}
+or_bp_dars_pos_gencode <- cbind(
+  rbind(FT2(dars_pos, gencode_features$union, "union", sl),
+        FT2(dars_pos, gencode_features$pc_transcripts, "PC", sl),
+        FT2(dars_pos, gencode_features$lnc_transcripts, "lncRNA", sl)),
+  data.frame(source = "DARs"))
+or_bp_big_dars_pos_gencode <- cbind(
+  rbind(FT2(big_dars_pos, gencode_features$union, "union", sl),
+        FT2(big_dars_pos, gencode_features$pc_transcripts, "PC", sl),
+        FT2(big_dars_pos, gencode_features$lnc_transcripts, "lncRNA", sl)),
+  data.frame(source = "bigDARs"))
+
+ggplot(rbind(or_bp_dars_pos_gencode, or_bp_big_dars_pos_gencode),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. rest of genome (bp)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+### DARs vs. null-peaks
+
+#### Using all peaks
+
+```{r}
+or_bp_dars_pos_vs_null_gencode <- cbind(
+  rbind(FT3(dars_pos, null_peaks, gencode_features$union, "union"),
+        FT3(dars_pos, null_peaks, gencode_features$pc_transcripts, "PC"),
+        FT3(dars_pos, null_peaks, gencode_features$lnc_transcripts, "lncRNA")),
+  data.frame(source = factor("DARs", c("DARs", "bigDARs"))))
+or_bp_big_dars_pos_vs_null_gencode <- cbind(
+  rbind(FT3(big_dars_pos, null_peaks, gencode_features$union, "union"),
+        FT3(big_dars_pos, null_peaks, gencode_features$pc_transcripts, "PC"),
+        FT3(big_dars_pos, null_peaks, gencode_features$lnc_transcripts, "lncRNA")),
+  data.frame(source = factor("bigDARs", c("DARs", "bigDARs"))))
+ggplot(rbind(or_bp_dars_pos_vs_null_gencode, or_bp_big_dars_pos_vs_null_gencode),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. null-peaks (bp)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+#### Focusing on DEGs
+
+```{r}
+or_bp_dars_pos_vs_null_gencode_degs <- cbind(
+  rbind(FT3(dars_pos, null_peaks, deg_flattened_features_union, "DEGs-union"),
+        FT3(dars_pos, null_peaks, deg_flattened_features_pc, "DEGs-PC"),
+        FT3(dars_pos, null_peaks, deg_flattened_features_lnc, "DEGs-lncRNA")),
+  data.frame(source = factor("DARs", c("DARs", "bigDARs"))))
+or_bp_big_dars_pos_vs_null_gencode_degs <- cbind(
+  rbind(FT3(big_dars_pos, null_peaks, deg_flattened_features_union, "DEGs-union"),
+        FT3(big_dars_pos, null_peaks, deg_flattened_features_pc, "DEGs-PC"),
+        FT3(big_dars_pos, null_peaks, deg_flattened_features_lnc, "DEGs-lncRNA")),
+  data.frame(source = factor("bigDARs", c("DARs", "bigDARs"))))
+ggplot(rbind(or_bp_dars_pos_vs_null_gencode_degs, 
+             or_bp_big_dars_pos_vs_null_gencode_degs),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. null-peaks (bp, DEGs)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+#### Focusing on non-DEGs
+
+```{r}
+or_bp_dars_pos_vs_null_gencode_non_degs <- cbind(
+  rbind(FT3(dars_pos, null_peaks, non_deg_flattened_features_union, 
+            "non-DEGs-union"),
+        FT3(dars_pos, null_peaks, non_deg_flattened_features_pc, 
+            "non-DEGs-PC"),
+        FT3(dars_pos, null_peaks, non_deg_flattened_features_lnc,
+            "non-DEGs-lncRNA")),
+  data.frame(source = factor("DARs", c("DARs", "bigDARs"))))
+or_bp_big_dars_pos_vs_null_gencode_non_degs <- cbind(
+  rbind(FT3(big_dars_pos, null_peaks, non_deg_flattened_features_union, 
+            "non-DEGs-union"),
+        FT3(big_dars_pos, null_peaks, non_deg_flattened_features_pc, 
+            "non-DEGs-PC"),
+        FT3(big_dars_pos, null_peaks, non_deg_flattened_features_lnc,
+            "non-DEGs-lncRNA")),
+  data.frame(source = factor("bigDARs", c("DARs", "bigDARs"))))
+ggplot(rbind(or_bp_dars_pos_vs_null_gencode_non_degs, 
+             or_bp_big_dars_pos_vs_null_gencode_non_degs),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. null-peaks (bp, non-DEGs)") +
+  ylab("log2(OR) with 95% CI")
+```

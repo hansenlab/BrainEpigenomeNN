@@ -1,0 +1,152 @@
+---
+title: "CH-DMRs genomic context"
+author: "Peter Hickey"
+date: "`r BiocStyle::doc_date()`"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include = FALSE, setup}
+knitr::opts_chunk$set(echo = TRUE, comment = "#>", collapse = TRUE,
+                      message = FALSE , warning = FALSE)
+```
+
+```{r, load_data}
+library(GenomicRanges)
+library(dplyr)
+library(purrr)
+
+
+load("../../integrating-dmrs-dars-and-degs/objects/assays-and-features.rda")
+load("../../../FlowSortingProject/Objects/All_BLOCK_POS_DMRs_fwer50.rda")
+CG_DMRs <- dmrs_pos
+CG_blocks <- makeGRangesFromDataFrame(sig_block_dmrs)
+list_of_candidate_CH_DMRs <-
+  readRDS("../objects/list_of_candidate_CH_DMRs.with_meanMeth.rds")
+list_of_CH_DMRs <- lapply(list_of_candidate_CH_DMRs, function(dmrs) {
+  dmrs[dmrs$fwer / dmrs$successful_permutations <= 0.05, ]
+})
+```
+
+# Size of CH-DMRs
+
+```{r}
+lengths(list_of_candidate_CH_DMRs)
+lengths(list_of_CH_DMRs)
+
+# Proportion of candidate CH-DMRs that pass FWER <= 0.05 cutoff
+100 * lengths(list_of_CH_DMRs) / lengths(list_of_candidate_CH_DMRs)
+
+# Size of CH-DMRs in Mb
+sapply(list_of_CH_DMRs, function(xx) sum(width(xx))) / 10 ^ 6
+```
+
+# EDA of overlap between sets of CH-DMRs, CG-blocks, CG-DMRs, OCRs, and DARs
+
+```{r}
+
+
+# Proportion of CH-DMRs that overlap CH-DMRs in other context/strand
+# Read as '% colname overlapping rowname'
+sapply(list_of_CH_DMRs, function(x) {
+  sapply(list_of_CH_DMRs, function(y) {
+    sum(overlapsAny(x, y)) / length(x)
+  })
+})
+
+# Proportion of CH-DMRs that overlap CH-DMRs (in bp) in other context/strand
+sapply(list_of_CH_DMRs, function(x) {
+  sapply(list_of_CH_DMRs, function(y) {
+    sum(width(GenomicRanges::intersect(x, y))) / sum(width(x))
+  })
+})
+
+# Proportion of CH-DMRs that overlap CG-DMRs
+sapply(list_of_CH_DMRs, function(x) {
+  sum(overlapsAny(x, CG_DMRs)) / length(x)
+})
+
+# Proportion of CH-DMRs that overlap CG-DMRs (in bp)
+sapply(list_of_CH_DMRs, function(x) {
+  sum(width(GenomicRanges::intersect(x, CG_DMRs))) / sum(width(x))
+})
+
+# Proportion of CH-DMRs that overlap CG-blocks
+sapply(list_of_CH_DMRs, function(x) {
+  sum(overlapsAny(x, CG_blocks)) / length(x)
+})
+
+# Proportion of CH-DMRs that overlap CG-blocks (in bp)
+sapply(list_of_CH_DMRs, function(x) {
+  sum(width(GenomicRanges::intersect(x, CG_blocks))) / sum(width(x))
+})
+
+# Proportion of CH-DMRs that overlap DARs
+sapply(list_of_CH_DMRs, function(x) {
+  sum(overlapsAny(x, dars_pos)) / length(x)
+})
+
+# Proportion of CH-DMRs that overlap DARs (in bp)
+sapply(list_of_CH_DMRs, function(x) {
+  sum(width(GenomicRanges::intersect(x, dars_pos))) / sum(width(x))
+})
+
+# Proportion of CH-DMRs that overlap OCRs
+sapply(list_of_CH_DMRs, function(x) {
+  sum(overlapsAny(x, ocrs_overall)) / length(x)
+})
+
+# Proportion of CH-DMRs that overlap OCRs (in bp)
+sapply(list_of_CH_DMRs, function(x) {
+  sum(width(GenomicRanges::intersect(x, ocrs_overall))) / sum(width(x))
+})
+
+# Proportion of CH-DMRs that overlap CG-DMRs or CG-blocks
+sapply(list_of_CH_DMRs, function(x) {
+  sum(overlapsAny(x, GenomicRanges::union(CG_DMRs, CG_blocks))) / length(x)
+})
+
+# Proportion of CH-DMRs that overlap CG-DMRs or CG-blocks (in bp)
+sapply(list_of_CH_DMRs, function(x) {
+  sum(width(
+    GenomicRanges::intersect(x, GenomicRanges::union(CG_DMRs, CG_blocks)))) /
+    sum(width(x))
+})
+
+# Proportion of CH-DMRs that overlap CG-DMRs or CG-blocks or DARs
+sapply(list_of_CH_DMRs, function(x) {
+  sum(overlapsAny(x, GenomicRanges::union(
+    GenomicRanges::union(CG_DMRs, CG_blocks), dars_pos))) / length(x)
+})
+
+# Proportion of CH-DMRs that overlap CG-DMRs or CG-blocks or DARs (in bp)
+sapply(list_of_CH_DMRs, function(x) {
+  sum(width(
+    GenomicRanges::intersect(x,
+                             GenomicRanges::union(
+                               GenomicRanges::union(CG_DMRs, CG_blocks),
+                               dars_pos)))) /
+    sum(width(x))
+})
+
+# Distance distribution for CH-DRMs from nearest CG-DMR
+sapply(list_of_CH_DMRs, function(x) {
+  quantile(mcols(distanceToNearest(x, CG_DMRs))$distance, 0:10 / 10)
+})
+
+# Distance distribution for CH-DRMs from nearest CG-DMR or CG-block
+sapply(list_of_CH_DMRs, function(x) {
+  quantile(
+    mcols(distanceToNearest(
+      x, GenomicRanges::union(CG_DMRs, CG_blocks)))$distance,
+    0:10 / 10)
+})
+```
+
+# TODOs
+
+- [ ] mCH is reportedly enriched in regions of low CG density (https://www.ncbi.nlm.nih.gov/pubmed/24362762). Are CH-DMRs enriched in regions of low CG density?

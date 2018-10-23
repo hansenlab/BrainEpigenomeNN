@@ -1,0 +1,311 @@
+---
+title: "Context and enrichment/depetion of DMRs and DARs with respect to enhancers"
+author: "Peter Hickey"
+date: "4 July 2017"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE, setup}
+knitr::opts_chunk$set(echo = FALSE, comment = "#>", collapse = TRUE, 
+                      message = FALSE, results = "hide", warning = FALSE)
+load("../objects/assays-and-features.rda")
+source("../scripts/functions.R")
+```
+
+```{r, message = FALSE, pkgs}
+library(GenomicRanges)
+library(rtracklayer)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(UpSetR)
+```
+
+# Summary
+
+We consider `permissive_enhancers`, `H3K27ac_brain`, and 
+`brain_permissive_enhancers` (see [`objects.md`](objects.md)) and combine these 
+into an list, `unlinked_enhancers`.
+
+# Enhancer context of DMRs and bigDMRs
+
+Using all POS DMRs
+
+## DMRs
+
+```{r, DMRs-enhancer-context}
+feature_names <- names(unlinked_enhancers)
+dmrs_pos_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(dmrs_pos, unlinked_enhancers[[feature_name]])),
+           feature_name)
+}))
+dmrs_pos_hits_df <- data.frame(db = c("Vermunt", "FANTOM5", "FANTOM5+Vermunt"),
+                               feature = names(dmrs_pos_hits),
+                               hits = unname(dmrs_pos_hits),
+                               perc = 100 * unname(dmrs_pos_hits) / 
+                                 length(dmrs_pos),
+                               stringsAsFactors = FALSE)
+split(dmrs_pos_hits_df, dmrs_pos_hits_df$db)
+x <- makeUpSetRList(dmrs_pos, unlinked_enhancers)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## DMR-CpGs
+
+Counting CpGs in DMRs rather than number of DMRs hit an enhancer
+
+```{r, DMR-CpGs-enhancer-context}
+feature_names <- names(unlinked_enhancers)
+dmrs_pos_cpgs_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(dmrs_pos_cpgs, 
+                           unlinked_enhancers[[feature_name]])), feature_name)
+}))
+dmrs_pos_cpgs_hits_df <- data.frame(db = c("Vermunt", "FANTOM5",
+                                           "FANTOM5+Vermunt"),
+                                    feature = names(dmrs_pos_cpgs_hits),
+                                    hits = unname(dmrs_pos_cpgs_hits),
+                                    perc = 100 * unname(dmrs_pos_cpgs_hits) / 
+                                      length(dmrs_pos_cpgs),
+                                    stringsAsFactors = FALSE)
+split(dmrs_pos_cpgs_hits_df, dmrs_pos_cpgs_hits_df$db)
+x <- makeUpSetRList(dmrs_pos_cpgs, unlinked_enhancers)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## bigDMRs
+
+```{r, bigDMRs-enhancer-context}
+feature_names <- names(unlinked_enhancers)
+big_dmrs_pos_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(big_dmrs_pos, 
+                           unlinked_enhancers[[feature_name]])), feature_name)
+}))
+big_dmrs_pos_hits_df <- data.frame(db = c("Vermunt", "FANTOM5", 
+                                          "FANTOM5+Vermunt"),
+                                   feature = names(unlinked_enhancers),
+                                   hits = unname(big_dmrs_pos_hits),
+                                   perc = 100 * unname(big_dmrs_pos_hits) / 
+                                     length(big_dmrs_pos),
+                                   stringsAsFactors = FALSE)
+split(big_dmrs_pos_hits_df, big_dmrs_pos_hits_df$db)
+x <- makeUpSetRList(big_dmrs_pos, unlinked_enhancers)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## bigDMR-CpGs
+
+Counting CpGs in bigDMRs rather than number of bigDMRs
+
+```{r, bigDMR-CpGs-enhancer-context}
+feature_names <- names(unlinked_enhancers)
+big_dmrs_pos_cpgs_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(big_dmrs_pos_cpgs, 
+                           unlinked_enhancers[[feature_name]])), feature_name)
+}))
+big_dmrs_pos_cpgs_hits_df <- data.frame(db = c("Vermunt", "FANTOM5", 
+                                               "FANTOM5+Vermunt"),
+                                        feature = names(unlinked_enhancers),
+                                        hits = unname(big_dmrs_pos_cpgs_hits),
+                                        perc = 100 *
+                                          unname(big_dmrs_pos_cpgs_hits) / 
+                                          length(big_dmrs_pos_cpgs),
+                                        stringsAsFactors = FALSE)
+split(big_dmrs_pos_cpgs_hits_df, big_dmrs_pos_cpgs_hits_df$db)
+x <- makeUpSetRList(big_dmrs_pos_cpgs, unlinked_enhancers)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## Summary
+
+- Roughly 50% of DMRs overlap with `H3K27ac_brain` 
+
+# Enhancer enrichment/depletion of DMR-CpGs and bigDMR-CpGs
+
+Using all POS DMRs
+
+```{r}
+or_dmrs_pos_cpgs_enhancers <- cbind(
+  FT(dmrs_pos_cpgs, non_dmrs_pos_cpgs, unlinked_enhancers, 
+     c("Vermunt", "FANTOM5", "FANTOM5+Vermunt")),
+  data.frame(source = factor("DMR-CpGs", 
+                             c("DMRs", "bigDMRs", "DMR-CpGs", "bigDMR-CpGs"))))
+or_big_dmrs_pos_cpgs_enhancers <- cbind(
+  FT(big_dmrs_pos_cpgs, non_big_dmrs_pos_cpgs, unlinked_enhancers, 
+     c("Vermunt", "FANTOM5", "FANTOM5+Vermunt")),
+  data.frame(source = factor("bigDMR-CpGs", 
+                             c("DMRs", "bigDMRs", "DMR-CpGs", "bigDMR-CpGs"))))
+ggplot(rbind(or_dmrs_pos_cpgs_enhancers, or_big_dmrs_pos_cpgs_enhancers), 
+       aes(x = feature, y = log2(estimate), col = db)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_wrap(~ source, ncol = 2) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("All genes") + 
+  ylab("log2(OR) with 95% CI")
+```
+
+## Summary
+
+- DMR-CpGs especially enriched in all enhancers, especially `H3K27ac_brain`
+
+# Enhancer context of DARs and bigDARs
+
+Using all NA_pos vs. BA9_pos DARs
+
+## DARs
+
+```{r, DARs-enhancer-context}
+feature_names <- names(unlinked_enhancers)
+dars_pos_pos_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(dars_pos, unlinked_enhancers[[feature_name]])),
+           feature_name)
+}))
+dars_pos_pos_hits_df <- data.frame(db = c("Vermunt", "FANTOM5", "FANTOM5+Vermunt"),
+                               feature = names(dars_pos_pos_hits),
+                               hits = unname(dars_pos_pos_hits),
+                               perc = 100 * unname(dars_pos_pos_hits) / 
+                                 length(dars_pos),
+                               stringsAsFactors = FALSE)
+split(dars_pos_pos_hits_df, dars_pos_pos_hits_df$db)
+x <- makeUpSetRList(dars_pos, unlinked_enhancers)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## bigDARs
+
+```{r, bigDARs-enhancer-context}
+big_dars_pos <- dars_pos[abs(dars_pos$logFC) > 1]
+feature_names <- names(unlinked_enhancers)
+big_dars_pos_pos_hits <- unlist(lapply(feature_names, function(feature_name) {
+  setNames(sum(overlapsAny(big_dars_pos, unlinked_enhancers[[feature_name]])),
+           feature_name)
+}))
+big_dars_pos_pos_hits_df <- data.frame(db = c("Vermunt", "FANTOM5",
+                                          "FANTOM5+Vermunt"),
+                               feature = names(big_dars_pos_pos_hits),
+                               hits = unname(big_dars_pos_pos_hits),
+                               perc = 100 * unname(big_dars_pos_pos_hits) / 
+                                 length(big_dars_pos),
+                               stringsAsFactors = FALSE)
+split(big_dars_pos_pos_hits_df, big_dars_pos_pos_hits_df$db)
+x <- makeUpSetRList(big_dars_pos, unlinked_enhancers)
+upset(fromList(x), order.by = "freq", nsets = length(x))
+```
+
+## Summary
+
+- Roughly 38% of DARs overlap with `H3K27ac_brain` 
+
+# Enhancer enrichment/depletion of ATAC-seq peaks, DARs, and bigDARs
+
+We consider enrichment of:
+
+1. Peaks vs. rest of genome
+2. DARS vs. rest of genome
+    a. bigDARs vs. rest of genome
+3. DARs vs. null-peaks
+    a. bigDARs vs. null-peaks
+Note that the non-DARs will still have some 'differential' peaks 
+(`adj.P.Val < 0.05` but with a `abs(logFC) < 1`) whereas the null-peaks are 
+those with `adj.P.Val > 0.05`.
+
+We consider two different ways to calculate enrichment using ATAC-seq data:
+
+A. Counting peaks (only 3, 4)
+B. Counting bases (1, 2, 3, 4)
+
+## Counting peaks
+
+### DARs vs. null-peaks
+
+```{r}
+null_peaks <- subsetByOverlaps(ocrs_overall, dars_pos, invert = TRUE)
+or_dars_pos_vs_null_enhancers <- cbind(
+  FT(dars_pos, null_peaks, unlinked_enhancers, 
+     c("Vermunt", "FANTOM5", "FANTOM5+Vermunt")),
+  data.frame(source = factor("DARs", c("DARs", "bigDARs"))))
+or_big_dars_pos_vs_null_enhancers <- cbind(
+  FT(big_dars_pos, null_peaks, unlinked_enhancers, 
+     c("Vermunt", "FANTOM5", "FANTOM5+Vermunt")),
+  data.frame(source = factor("bigDARs", c("DARs", "bigDARs"))))
+ggplot(rbind(or_dars_pos_vs_null_enhancers, or_big_dars_pos_vs_null_enhancers), 
+       aes(x = feature, y = log2(estimate), col = db)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_wrap(~ source, ncol = 2) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DARs vs. null-peaks (all genes)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+## Counting bases
+
+### Peaks vs. rest of genome
+
+```{r}
+or_bp_peaks_enhancers <- cbind(
+  rbind(FT2(ocrs_overall, unlinked_enhancers, 
+            c("Vermunt", "FANTOM5", "FANTOM5+Vermunt"), sl)),
+  data.frame(source = "peaks"))
+ggplot(or_bp_peaks_enhancers,
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("Peaks vs. rest of genome (bp)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+### DARS vs. rest of genome
+
+```{r}
+or_bp_dars_pos_enhancers <- cbind(
+  rbind(FT2(dars_pos, unlinked_enhancers, 
+            c("Vermunt", "FANTOM5", "FANTOM5+Vermunt"), sl)),
+  data.frame(source = "DARs"))
+or_bp_big_dars_pos_enhancers <- cbind(
+  rbind(FT2(big_dars_pos, unlinked_enhancers, 
+            c("Vermunt", "FANTOM5", "FANTOM5+Vermunt"), sl)),
+  data.frame(source = "bigDARs"))
+ggplot(rbind(or_bp_dars_pos_enhancers, or_bp_big_dars_pos_enhancers),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("Peaks vs. rest of genome (bp)") +
+  ylab("log2(OR) with 95% CI")
+```
+
+### DARs vs. null-peaks
+
+```{r}
+or_bp_dars_pos_vs_null_enhancers <- cbind(
+  FT3(dars_pos, null_peaks, 
+      unlinked_enhancers, 
+      c("Vermunt", "FANTOM5", "FANTOM5+Vermunt")),
+  data.frame(source = factor("DARs", c("DARs", "bigDARs"))))
+or_bp_big_dars_pos_vs_null_enhancers <- cbind(
+  FT3(big_dars_pos, null_peaks, unlinked_enhancers, 
+      c("Vermunt", "FANTOM5", "FANTOM5+Vermunt")),
+  data.frame(source = factor("bigDARs", c("DARs", "bigDARs"))))
+ggplot(rbind(or_bp_dars_pos_vs_null_enhancers, or_bp_big_dars_pos_vs_null_enhancers),
+       aes(x = feature, y = log2(estimate), col = db)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~ source) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("DARs vs. null-peaks (bp)") +
+  ylab("log2(OR) with 95% CI")
+```

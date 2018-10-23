@@ -1,0 +1,1 @@
+Scripts used to create UCSC genome browser hub (http://genome.ucsc.edu/cgi-bin/hgTracks?hgS_doOtherUser=submit&hgS_otherUserName=chmalee&hgS_otherUserSessionName=hg19_brainEpigenome). Also contains notes on setting up alternative genome browser hubs (ultimately, these were not pursued).

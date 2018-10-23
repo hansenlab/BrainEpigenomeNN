@@ -1,0 +1,807 @@
+---
+title: "Objects used in integrative analyses"
+author: "Peter Hickey"
+date: "4 July 2017"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE, setup}
+knitr::opts_chunk$set(echo = FALSE, comment = "#>", collapse = TRUE, 
+                      message = FALSE, results = "hide", warning = FALSE)
+```
+
+# Summary
+
+Prepare objects for use in all integrative analyses. These objects are saved in [`../objects/assays-and-features.rda`](../objects/assays-and-features.rda)
+
+```{r, message = FALSE, pkgs}
+library(purrr)
+library(GenomicRanges)
+library(rtracklayer)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(UpSetR)
+library(BSgenome.Hsapiens.UCSC.hg19)
+library(SummarizedExperiment)
+library(biomaRt)
+
+extdir <- "../extdata"
+```
+
+# Assays
+
+## WGBS
+
+### DMRs
+
+- `dmrs_pos`: The 13,074 F-stat POS DMRs
+    - `big_dmrs_pos`: The 3,659 / 13,074 F-stat POS DMRs where `abs(maxDiff) > 0.5`
+    - `dmrs_NAvsBA9pos`: The 12,895 / 13,074 F-stat POS DMRs where `NAvsBA9pos == TRUE`
+        - `dmrs_NAvsBA9pos_hypo`: The 3,311 / 12,895 DMRs where NA_pos is hypomethylated relative to BA9_pos
+        - `dmrs_NAvsBA9pos_hyper`: The 9,584 / 12,895 DMRs where NA_pos is hypermethylated relative to BA9_pos
+        - `big_dmrs_NAvsBA9pos`: The 3,156 / 12,895 POS DMRs where `NAvsBA9pos == TRUE & abs(NAvsBA9pos_meanDiff) > 0.5`
+            - `big_dmrs_NAvsBA9pos_hypo`: The 985 / 3,156 bigDMRs where NA_pos is hypomethylated relative to BA9_pos
+            - `big_dmrs_NAvsBA9pos_hyper`: The 2,171 / 3,156 bigDMRs where NA_pos is hypermethylated relative to BA9_pos
+
+### DMR-CpGs
+
+- `cpgs`: The 23,059,530 CpGs used in DMR testing
+    - `dmrs_pos_cpgs`: The 255,537 CpGs within `dmrs_pos`
+    - `dmrs_NAvsBA9pos_cpgs`: The 251,224 CpGs within `dmrs_NAvsBA9pos`
+        - `dmrs_NAvsBA9pos_hypo_cpgs`: The 52,269 CpGs within `dmrs_NAvsBA9pos_hypo`
+        - `dmrs_NAvsBA9pos_hyper_cpgs`: The 198,955 CpGs within `dmrs_NAvsBA9pos_hyper`
+    - `big_dmrs_NAvsBA9pos_cpgs`: The 53,264 CpGs within `big_dmrs_NAvsBA9pos`
+        - `big_dmrs_NAvsBA9pos_hypo_cpgs`: The 12,517 CpGs within `big_dmrs_NAvsBA9pos_hypo`
+        - `big_dmrs_NAvsBA9pos_hyper_cpgs`: The 40,747 CpGs within `big_dmrs_NAvsBA9pos_hyper`
+
+## ATAC-seq
+
+- Open chromatin regions (OCRs) based on MACS2 `narrowPeak` output files
+  - Condition-specific: `ocrs_NAcc_pos`, `ocrs_NAcc_neg`, `ocrs_BA9_pos`, `ocrs_BA9_neg`
+  - Unions: `ocrs_pos`, `ocrs_neg`, `ocrs_overall`
+- Differentially accessible regions (DARs)
+  - `dars_pos`, `dars_neg`, `dars_pos_vs_neg`
+    
+## RNA-seq
+
+- `degs`: The 2,952 / 24,161 DEGs (`adj.P.Val < 0.05`) between NA_pos and BA9_pos (recall that there are 33,351 genes but we only test 24,161 for DE because the remainder are 'unexpressed' in a large subset of the sample)
+    - `degs_pc`: The 2,402 / 19,823 DEGs (`adj.P.Val < 0.05`) between `NA_pos` and `BA9_pos` that are protein-coding genes
+    - `degs_lnc`: The 550 / 13528 DEGs (`adj.P.Val < 0.05`) between `NA_pos` and `BA9_pos` that are lncRNA genes
+
+```{r, assays}
+# WGBS
+cpgs <- readRDS("../../Objects/covered_cpgs.rds")
+load("../../Objects/All_Annotated_DMRs_GRanges.rda")
+
+# DMR level
+dmrs_pos <- Annotated_POS_DMRs_gr
+non_dmrs_pos <- gaps(dmrs_pos)
+big_dmrs_pos <- dmrs_pos[abs(dmrs_pos$maxDiff) > 0.5]
+non_big_dmrs_pos <- gaps(big_dmrs_pos)
+
+dmrs_NAvsBA9pos <- dmrs_pos[dmrs_pos$NAvsBA9pos == TRUE]
+non_dmrs_NAvsBA9pos <- gaps(dmrs_NAvsBA9pos)
+dmrs_NAvsBA9pos$meanDiff <- dmrs_NAvsBA9pos$NAvsBA9pos_meanDiff
+dmrs_NAvsBA9pos_hypo <- dmrs_NAvsBA9pos[dmrs_NAvsBA9pos$meanDiff < 0]
+dmrs_NAvsBA9pos_hyper <- dmrs_NAvsBA9pos[dmrs_NAvsBA9pos$meanDiff > 0]
+big_dmrs_NAvsBA9pos <- dmrs_NAvsBA9pos[abs(dmrs_NAvsBA9pos$meanDiff) > 0.5]
+non_big_dmrs_NAvsBA9pos <- gaps(dmrs_NAvsBA9pos)
+big_dmrs_NAvsBA9pos_hypo <- 
+  big_dmrs_NAvsBA9pos[big_dmrs_NAvsBA9pos$meanDiff < 0]
+big_dmrs_NAvsBA9pos_hyper <- 
+  big_dmrs_NAvsBA9pos[big_dmrs_NAvsBA9pos$meanDiff > 0]
+
+# DMR-CpG level
+dmrs_pos_cpgs <- subsetByOverlaps(cpgs, dmrs_pos)
+non_dmrs_pos_cpgs <- subsetByOverlaps(cpgs, dmrs_pos, invert = TRUE)
+big_dmrs_pos_cpgs <- subsetByOverlaps(cpgs, big_dmrs_pos)
+non_big_dmrs_pos_cpgs <- subsetByOverlaps(cpgs, big_dmrs_pos, invert = TRUE)
+dmrs_NAvsBA9pos_cpgs <- subsetByOverlaps(cpgs, dmrs_NAvsBA9pos)
+non_dmrs_NAvsBA9pos_cpgs <- subsetByOverlaps(cpgs, dmrs_NAvsBA9pos_cpgs, 
+                                             invert = TRUE)
+dmrs_NAvsBA9pos_hypo_cpgs <- subsetByOverlaps(cpgs, dmrs_NAvsBA9pos_hypo)
+dmrs_NAvsBA9pos_hyper_cpgs <- subsetByOverlaps(cpgs, dmrs_NAvsBA9pos_hyper)
+big_dmrs_NAvsBA9pos_hypo_cpgs <- subsetByOverlaps(cpgs, big_dmrs_NAvsBA9pos_hypo)
+big_dmrs_NAvsBA9pos_hyper_cpgs <- subsetByOverlaps(cpgs, big_dmrs_NAvsBA9pos_hyper)
+big_dmrs_NAvsBA9pos_cpgs <- subsetByOverlaps(cpgs, big_dmrs_NAvsBA9pos)
+non_big_dmrs_NAvsBA9pos_cpgs <- subsetByOverlaps(cpgs, 
+                                                 big_dmrs_NAvsBA9pos_cpgs,
+                                                 invert = TRUE)
+
+# RNA-seq
+load("../../Objects/rna_seq.rda")
+load("../../genomic-features/objects/unflattened-GENCODE-v19-features.rda")
+degs <- rna_seq_de_pos$gene_level[rna_seq_de_pos$gene_level$adj.P.Val < 0.05]
+degs_pc <- degs[degs$gene_id %in% 
+                  names(unflattened_features_pc_transcripts$genic)]
+degs_lnc <- degs[degs$gene_id %in%
+                   names(unflattened_features_lnc_transcripts$genic)]
+
+# ATAC-seq
+dars_pos <- GRanges(
+  read_csv("../../ATAC-seq/extdata/DARs.NA_posvsBA9_pos.ATAC-seq.csv.gz"))
+dars_neg <- GRanges(
+  read_csv("../../ATAC-seq/extdata/DARs.NA_negvsBA9_neg.ATAC-seq.csv.gz"))
+dars_pos_vs_neg <- GRanges(
+  read_csv("../../ATAC-seq/extdata/DARs.ave_pos_vs_ave_neg.ATAC-seq.csv.gz"))
+ocrs_tested_for_da <- sort(granges(
+  GRanges(
+    read_csv("../../ATAC-seq/extdata/topTable.NA_posvsBA9_pos.ATAC-seq.csv.gz"))
+  ))
+
+extraCols_narrowPeak <- c(signalValue = "numeric", pValue = "numeric",
+                          qValue = "numeric", peak = "integer") 
+ocrs_BA9_pos <- 
+  import(file.path(extdir, "flow-sorted-brain-atac", "data", "macs2",
+                   "flow-sorted-brain-atac.BA9-pos_peaks.narrowPeak"),
+         extraCols = extraCols_narrowPeak, 
+         format = "BED")
+ocrs_BA9_pos <- keepSeqlevels(GenomicRanges::reduce(ocrs_BA9_pos), 
+                              paste0("chr", 1:22),
+                              pruning.mode = "coarse")
+ocrs_BA9_neg <- 
+  import(file.path(extdir, "flow-sorted-brain-atac", "data", 
+                   "macs2", "flow-sorted-brain-atac.BA9-neg_peaks.narrowPeak"),
+                extraCols = extraCols_narrowPeak, 
+                format = "BED")
+ocrs_BA9_neg <- keepSeqlevels(GenomicRanges::reduce(ocrs_BA9_neg), 
+                              paste0("chr", 1:22),
+                              pruning.mode = "coarse")
+
+ocrs_NAcc_pos <- 
+  import(file.path(extdir, "flow-sorted-brain-atac", "data", "macs2", 
+                          "flow-sorted-brain-atac.NA-pos_peaks.narrowPeak"), 
+                extraCols = extraCols_narrowPeak,
+                format = "BED")
+ocrs_NAcc_pos <- keepSeqlevels(GenomicRanges::reduce(ocrs_NAcc_pos), 
+                              paste0("chr", 1:22),
+                              pruning.mode = "coarse")
+
+ocrs_NAcc_neg <- 
+  import(file.path(extdir, "flow-sorted-brain-atac", "data", "macs2", 
+                          "flow-sorted-brain-atac.NA-neg_peaks.narrowPeak"), 
+                extraCols = extraCols_narrowPeak,
+                format = "BED")
+ocrs_NAcc_neg <- keepSeqlevels(GenomicRanges::reduce(ocrs_NAcc_neg), 
+                              paste0("chr", 1:22),
+                              pruning.mode = "coarse")
+
+
+ocrs_pos <- GenomicRanges::reduce(c(ocrs_BA9_pos, ocrs_NAcc_pos))
+ocrs_neg <- GenomicRanges::reduce(c(ocrs_BA9_neg, ocrs_NAcc_neg))
+ocrs_overall <-  GenomicRanges::reduce(c(ocrs_pos, ocrs_neg))
+```
+
+# Features
+
+## hg19
+
+- `sl`: The lengths of the autosomes in hg19
+
+```{r, hg19}
+sl <- seqlengths(keepSeqlevels(seqinfo(BSgenome.Hsapiens.UCSC.hg19), 
+                              paste0("chr", 1:22),
+                              pruning.mode = "coarse"))
+```
+
+## GENCODE v19
+
+- `union`
+    - `genic`
+    - `promoter`
+    - `five_utr`
+    - `three_utr`
+    - `exonic`
+    - `intronic`
+    - `intergenic`
+- `pc_transcripts`
+    - `genic`
+    - `promoter`
+    - `five_utr`
+    - `three_utr`
+    - `exonic`
+    - `intronic`
+    - `intergenic`
+- `lnc_transcripts`
+    - `genic`
+    - `promoter`
+    - `exonic`
+    - `intronic`
+    - `intergenic`
+
+Plus, all of the above linked to DEGs and non-DEGs.
+
+```{r}
+load("../../Objects/gencode_features.rda")
+names(gencode_features)
+names(gencode_features[["union"]])
+names(gencode_features[["pc_transcripts"]])
+names(gencode_features[["lnc_transcripts"]])
+
+deg_names <- degs$gene_id
+deg_names_trimmed <- sapply(strsplit(deg_names, "\\."), "[[", 1)  
+
+# NOTE: Stores all transcript names associates with differentially expressed 
+#       genes; required for extracting 5' UTRs and 3' UTRs of DEGs
+deg_tx_names <- unlist(
+  unflattened_features$transcripts_by_gene[deg_names])$tx_name
+
+# NOTE: No 'intergenic' set because complement of DEGs includes genic elements
+deg_flattened_features_union <- list(
+  genic = reduce(unstrand(
+    unflattened_features$genes[unlist(unflattened_features$genes$GENEID) %in%
+                                 deg_names])),
+  promoter = reduce(unstrand(
+    unflattened_features$promoters[
+      unlist(unflattened_features$promoters$GENEID) %in% deg_names])),
+  # NOTE: Messy matching because not all tx have 5' UTRs (e.g., lncRNAs)
+  five_utr = reduce(unstrand(unlist(
+    unflattened_features$five_utrs_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features$five_utrs_by_transcript)))]))),
+  # NOTE: Messy matching because not all tx have 3' UTRs (e.g., lncRNAs)
+  three_utr = reduce(unstrand(unlist(
+    unflattened_features$three_utrs_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features$three_utrs_by_transcript)))]))),
+  exonic = reduce(unstrand(unlist(
+    unflattened_features$exons_by_transcript[deg_tx_names]))),
+  intronic = reduce(unstrand(unlist(
+    unflattened_features$introns_by_transcript[deg_tx_names])))
+)
+
+deg_flattened_features_pc <- list(
+  genic = reduce(unstrand(
+    unflattened_features_pc_transcripts$genes[
+      unlist(unflattened_features_pc_transcripts$genes$GENEID) %in%
+        deg_names])),
+  promoter = reduce(unstrand(
+    unflattened_features_pc_transcripts$promoters[
+      unlist(unflattened_features_pc_transcripts$promoters$GENEID) %in%
+        deg_names])),
+  # NOTE: Messy matching because not all tx have 5' UTRs (e.g., lncRNAs)
+  five_utr = reduce(unstrand(unlist(
+    unflattened_features_pc_transcripts$five_utrs_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features_pc_transcripts$five_utrs_by_transcript)))]))),
+  # NOTE: Messy matching because not all tx have 3' UTRs (e.g., lncRNAs)
+  three_utr = reduce(unstrand(unlist(
+    unflattened_features_pc_transcripts$three_utrs_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features_pc_transcripts$three_utrs_by_transcript)))]))),
+  exonic = reduce(unstrand(unlist(
+    unflattened_features_pc_transcripts$exons_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features_pc_transcripts$exons_by_transcript)))
+      ]))),
+  intronic = reduce(unstrand(unlist(
+    unflattened_features_pc_transcripts$introns_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features_pc_transcripts$introns_by_transcript)))])))
+)
+
+deg_flattened_features_lnc <- list(
+  genic = reduce(unstrand(
+    unflattened_features_lnc_transcripts$genes[
+      unlist(unflattened_features_lnc_transcripts$genes$GENEID) %in%
+        deg_names])),
+  promoter = reduce(unstrand(
+    unflattened_features_lnc_transcripts$promoters[
+      unlist(unflattened_features_lnc_transcripts$promoters$GENEID) %in%
+        deg_names])),
+  # NOTE: Messy matching because not all tx have 5' UTRs (e.g., lncRNAs)
+  five_utr = reduce(unstrand(unlist(
+    unflattened_features_lnc_transcripts$five_utrs_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features_lnc_transcripts$five_utrs_by_transcript)))]))),
+  # NOTE: Messy matching because not all tx have 3' UTRs (e.g., lncRNAs)
+  three_utr = reduce(unstrand(unlist(
+    unflattened_features_lnc_transcripts$three_utrs_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features_lnc_transcripts$three_utrs_by_transcript)))]))),
+  exonic = reduce(unstrand(unlist(
+    unflattened_features_lnc_transcripts$exons_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features_lnc_transcripts$exons_by_transcript)))
+      ]))),
+  intronic = reduce(unstrand(unlist(
+    unflattened_features_lnc_transcripts$introns_by_transcript[
+      na.omit(match(deg_tx_names,
+                    names(unflattened_features_lnc_transcripts$introns_by_transcript)))])))
+)
+
+non_deg_names <- setdiff(names(gencode_features$genes), deg_names)
+non_deg_names_trimmed <- sapply(strsplit(non_deg_names, "\\."), "[[", 1)  
+
+# NOTE: Stores all transcript names associates with differentially expressed 
+#       genes; required for extracting 5' UTRs and 3' UTRs of DEGs
+non_deg_tx_names <- unlist(
+  unflattened_features$transcripts_by_gene[non_deg_names])$tx_name
+
+# NOTE: No 'intergenic' set because complement of DEGs includes genic elements
+non_deg_flattened_features_union <- list(
+  genic = reduce(unstrand(
+    unflattened_features$genes[unlist(unflattened_features$genes$GENEID) %in%
+                                 non_deg_names])),
+  promoter = reduce(unstrand(
+    unflattened_features$promoters[
+      unlist(unflattened_features$promoters$GENEID) %in% non_deg_names])),
+  # NOTE: Messy matching because not all tx have 5' UTRs (e.g., lncRNAs)
+  five_utr = reduce(unstrand(unlist(
+    unflattened_features$five_utrs_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features$five_utrs_by_transcript)))]))),
+  # NOTE: Messy matching because not all tx have 3' UTRs (e.g., lncRNAs)
+  three_utr = reduce(unstrand(unlist(
+    unflattened_features$three_utrs_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features$three_utrs_by_transcript)))]))),
+  exonic = reduce(unstrand(unlist(
+    unflattened_features$exons_by_transcript[non_deg_tx_names]))),
+  intronic = reduce(unstrand(unlist(
+    unflattened_features$introns_by_transcript[non_deg_tx_names])))
+)
+
+non_deg_flattened_features_pc <- list(
+  genic = reduce(unstrand(
+    unflattened_features_pc_transcripts$genes[
+      unlist(unflattened_features_pc_transcripts$genes$GENEID) %in%
+        non_deg_names])),
+  promoter = reduce(unstrand(
+    unflattened_features_pc_transcripts$promoters[
+      unlist(unflattened_features_pc_transcripts$promoters$GENEID) %in%
+        non_deg_names])),
+  # NOTE: Messy matching because not all tx have 5' UTRs (e.g., lncRNAs)
+  five_utr = reduce(unstrand(unlist(
+    unflattened_features_pc_transcripts$five_utrs_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features_pc_transcripts$five_utrs_by_transcript)))]))),
+  # NOTE: Messy matching because not all tx have 3' UTRs (e.g., lncRNAs)
+  three_utr = reduce(unstrand(unlist(
+    unflattened_features_pc_transcripts$three_utrs_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features_pc_transcripts$three_utrs_by_transcript)))]))),
+  exonic = reduce(unstrand(unlist(
+    unflattened_features_pc_transcripts$exons_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features_pc_transcripts$exons_by_transcript)))
+      ]))),
+  intronic = reduce(unstrand(unlist(
+    unflattened_features_pc_transcripts$introns_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features_pc_transcripts$introns_by_transcript)))])))
+)
+
+non_deg_flattened_features_lnc <- list(
+  genic = reduce(unstrand(
+    unflattened_features_lnc_transcripts$genes[
+      unlist(unflattened_features_lnc_transcripts$genes$GENEID) %in%
+        non_deg_names])),
+  promoter = reduce(unstrand(
+    unflattened_features_lnc_transcripts$promoters[
+      unlist(unflattened_features_lnc_transcripts$promoters$GENEID) %in%
+        non_deg_names])),
+  # NOTE: Messy matching because not all tx have 5' UTRs (e.g., lncRNAs)
+  five_utr = reduce(unstrand(unlist(
+    unflattened_features_lnc_transcripts$five_utrs_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features_lnc_transcripts$five_utrs_by_transcript)))]))),
+  # NOTE: Messy matching because not all tx have 3' UTRs (e.g., lncRNAs)
+  three_utr = reduce(unstrand(unlist(
+    unflattened_features_lnc_transcripts$three_utrs_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features_lnc_transcripts$three_utrs_by_transcript)))]))),
+  exonic = reduce(unstrand(unlist(
+    unflattened_features_lnc_transcripts$exons_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features_lnc_transcripts$exons_by_transcript)))
+      ]))),
+  intronic = reduce(unstrand(unlist(
+    unflattened_features_lnc_transcripts$introns_by_transcript[
+      na.omit(match(non_deg_tx_names,
+                    names(unflattened_features_lnc_transcripts$introns_by_transcript)))])))
+)
+```
+
+For reference, the 'union' features have total sizes (bp) of:
+
+```{r, eval = TRUE, echo = TRUE, results = "markdup"}
+sort(sapply(gencode_features$union, function(x) sum(width(x))), decreasing = TRUE)
+```
+
+## CGIs
+
+- `cgi`
+- `shores` 
+- `shelves`
+- `open_sea`
+
+```{r}
+load("../../Objects/cgi_features.rda")
+cgi <- cgi_features$CGI
+shores <- cgi_features$Shores
+shelves <- cgi_features$Shelves
+open_sea <- cgi_features$OpenSea
+```
+
+## Promoters
+
+Each promoter enhancer is marked as 'active' if it overlaps an OCR
+
+- `promoters_by_gene`
+    - `promoters_by_gene_pc`
+    - `promoters_by_gene_lnc`
+    - `cgi_promoters_by_gene`
+        - `cgi_promoters_by_gene_pc`
+        - `cgi_promoters_by_gene_lnc`
+    - `shores_promoters_by_gene`
+        - `shores_promoters_by_gene_pc`
+        - `shores_promoters_by_gene_lnc`
+
+```{r, promoters}
+pc_genes <- names(unflattened_features_pc_transcripts$genes)
+lnc_genes <- names(unflattened_features_lnc_transcripts$genes)
+length(lnc_genes)
+
+# Promoters
+promoters <- unflattened_features$promoters
+promoters$active <- overlapsAny(promoters, ocrs_overall)
+promoters_by_gene <- split(promoters, unlist(promoters$GENEID))
+length(promoters_by_gene)
+promoters_by_gene_pc <- promoters_by_gene[names(promoters_by_gene) %in% 
+                                            pc_genes]
+length(promoters_by_gene_pc)
+promoters_by_gene_lnc <- promoters_by_gene[names(promoters_by_gene) %in% 
+                                             lnc_genes]
+length(promoters_by_gene_lnc)
+
+# CGI-promoters
+cgi_promoters <- subsetByOverlaps(promoters, cgi_features$CGI)
+length(cgi_promoters)
+cgi_promoters_by_gene <- split(cgi_promoters,
+                               unlist(cgi_promoters$GENEID))
+length(cgi_promoters_by_gene)
+cgi_promoters_by_gene_pc <- 
+  cgi_promoters_by_gene[names(cgi_promoters_by_gene) %in% pc_genes]
+length(cgi_promoters_by_gene_pc)
+cgi_promoters_by_gene_lnc <- 
+  cgi_promoters_by_gene[names(cgi_promoters_by_gene) %in% lnc_genes]
+length(cgi_promoters_by_gene_lnc)
+
+# Shore-promoters
+shore_promoters <- subsetByOverlaps(promoters, cgi_features$Shores)
+length(shore_promoters)
+shore_promoters_by_gene <- split(shore_promoters,
+                                 unlist(shore_promoters$GENEID))
+length(shore_promoters_by_gene)
+shore_promoters_by_gene_pc <- 
+  shore_promoters_by_gene[names(shore_promoters_by_gene) %in% pc_genes]
+length(shore_promoters_by_gene_pc)
+shore_promoters_by_gene_lnc <- 
+  shore_promoters_by_gene[names(shore_promoters_by_gene) %in% lnc_genes]
+length(shore_promoters_by_gene_lnc)
+```
+
+## Enhancers
+
+We have three sources of putative enhancers:
+
+1. `permissive_enhancers`: 43,011 permissive enhancers based on CAGE data from the FANTOM5 consortium (defined in Andersson et al. http://enhancer.binf.ku.dk/presets/permissive_enhancers.bed)
+2. `tssa_enhancer_pairs`: 72,019 TSS-associated (`tssa`) enhancer pairs based on CAGE data from the FANTOM5 project (defined in Andersson et al. http://enhancer.binf.ku.dk/presets/enhancer_tss_associations.bed). TSS-links have been made against TSSs of protein-coding genes in GENCODE v19 (see `../../genomic-features/scripts/fantom5-enhancer-tss-associations.R`). **NOTE:** There are 25,683 unique enhancers in this list, however, each enhancer may be linked to multiple TSSs, hence why there are many more TSS-linked enhancer pairs than there are enhancers
+3. `H3K27ac_brain`: 82,041 putative enhancer regions **in brain** based on H3K27ac mark (defined in Vermunt et al.)
+
+We further restrict and overlap these to create:
+
+- `brain_permissive_enhancers`: The 14,643 / 43,011 permissive enhancers that overlap H3K27ac-based brain enhancer regions
+- `brain_tssa_enhancer_pairs`: The 30,321 / 72,019 TSS-associated enhancer pairs where additionally the enhancer overlaps a H3K27ac-based brain enhancer regions
+    - `deg_brain_tssa_enhancer_pairs`: The 4,581 / 30,321 TSS-associated enhancer pairs where additionally the TSS is of a DEG (NA_pos vs BA9_pos)
+    - `non_deg_brain_tssa_enhancers`: The 25,740 / 30,321 TSS-associated enhancer pairs where additionally the TSS is of a non-DEG (NA_pos vs BA9_pos)
+    - **NOTE:** `subsetByOverlaps(non_deg_brain_tssa_enhancer_pairs, deg_brain_tssa_enhancer_pairs, invert = TRUE, type = "equal")` returns those TSS-associated enhancer pairs where the enhancer is not linked to any TSS of a DEG (NA_pos vs BA9_pos)
+    
+Furthermore, each FANTOM5 enhancer is marked as 'active' if it overlaps an 
+OCR in the 'overall' set
+      
+```{r, enhancers}
+permissive_enhancers <- import("../extdata/permissive_enhancers.bed")
+permissive_enhancers$active <- overlapsAny(permissive_enhancers, ocrs_overall)
+load("../../Objects/Brain_enh.rda")
+H3K27ac_brain <- Brain_enh
+rm(Brain_enh)
+
+brain_permissive_enhancers <- subsetByOverlaps(permissive_enhancers, 
+                                               H3K27ac_brain)
+load("../../Objects/FANTOM5_enh.rda")
+tssa_enhancer_pairs <- FANTOM5_enh
+tssa_enhancer_pairs$active <- relist(overlapsAny(unlist(tssa_enhancer_pairs),
+                                                 ocrs_overall),
+                                     tssa_enhancer_pairs)
+rm(FANTOM5_enh)
+
+brain_tssa_enhancer_pairs <- subsetByOverlaps(tssa_enhancer_pairs, 
+                                              H3K27ac_brain)
+
+# DEG-linked TSS-associated enhancer pairs
+deg_brain_tssa_enhancer_pairs <- brain_tssa_enhancer_pairs[
+  brain_tssa_enhancer_pairs$GENCODEGeneID %in% deg_names]
+
+# non-DEG-linked TSS-associated enhancer pairs
+non_deg_brain_tssa_enhancer_pairs <- brain_tssa_enhancer_pairs[
+  !brain_tssa_enhancer_pairs$GENCODEGeneID %in% deg_names]
+
+unlinked_enhancers <- 
+  list("H3K27ac" = H3K27ac_brain,
+       "FANTOM5" = permissive_enhancers,
+       "FANTOM5 brain (unlinked)" = brain_permissive_enhancers)
+linked_enhancers <- 
+  list("FANTOM5 (gene-linked)" = tssa_enhancer_pairs,
+       "FANTOM5 brain (gene-linked)" = brain_tssa_enhancer_pairs,
+       "FANTOM5 brain (DEG link)" = deg_brain_tssa_enhancer_pairs,
+       "FANTOM5 brain (no DEG link)" = non_deg_brain_tssa_enhancer_pairs)
+```
+
+For the TSS-associated enhancers, we also contruct 'enhancers-by-gene' objects:
+
+```{r, enhancers-by-gene}
+fantom5_enhancers_by_gene <- split(tssa_enhancer_pairs, 
+                                   tssa_enhancer_pairs$GENCODEGeneID)
+brain_fantom5_enhancers_by_gene <- 
+  split(brain_tssa_enhancer_pairs, brain_tssa_enhancer_pairs$GENCODEGeneID)
+```
+
+- `fantom5_enhancers_by_gene`: 11,763 genes linked to at least one FANTOM5 enhancer (median = `r median(lengths(fantom5_enhancers_by_gene))`)
+    - `brain_fantom5_enhancers_by_gene`: 8,118 genes linked to at least one enhancer in `brain_fantom5_enhancers` (median = `r median(lengths(brain_fantom5_enhancers_by_gene))`)
+
+
+## chromHMM
+
+- `AH46921`: chromHMM tracks for E068 (Anterior caudate; adjacent to NAcc)
+- `AH46922`: chromHMM tracks for E069 (Cingulate gyrus; BA24 is a subset of this region)
+- `AH46294`: chromHMM track for E071 (Hippocampus middle; HC)
+- `AH46926`: chromHMM tracks for AH46926 (Dorsolateral prefrontal cortex, BA9)
+
+
+```{r, chromHMM}
+load("../../Objects/chromHMM.rda")
+chromHMM_info
+AH46921 <- split(chromHMM_tracks[["AH46921"]],
+                 chromHMM_tracks[["AH46921"]]$name)
+AH46922 <- split(chromHMM_tracks[["AH46922"]],
+                 chromHMM_tracks[["AH46922"]]$name)
+AH46924 <- split(chromHMM_tracks[["AH46924"]],
+                 chromHMM_tracks[["AH46924"]]$name)
+AH46926 <- split(chromHMM_tracks[["AH46926"]], 
+                 chromHMM_tracks[["AH46926"]]$name)
+```
+
+For reference, the chromHMM features have total sizes (Mb) of:
+
+```{r, eval = TRUE, echo = FALSE, results = "markdup"}
+chromHMM_sizes <- data.frame(AH46921 = sum(width(AH46921)) / 10 ^ 6,
+                             AH46922 = sum(width(AH46922)) / 10 ^ 6,
+                             AH46924 = sum(width(AH46924)) / 10 ^ 6,
+                             AH46926 = sum(width(AH46926)) / 10 ^ 6)
+knitr::kable(round(chromHMM_sizes, 1))
+```
+
+# Gene-promoter-enhancer linked data
+
+We want to understand the relationship between promoter and enhancer DMRs and 
+DARs with the expression of the linked gene. That is, for each gene we tested 
+for differential expression (n = `r nrow(exp)`), we want:
+
+- the expression estimates in the 11 NA_pos/BA9_pos RNA-seq samples
+- an indicator if that gene is differentially expressed
+- the accessibility estimates of the ATAC-seq regions in the 11 NA_pos/BA9_pos 
+samples and an indicator if the region is a DAR for regions that:
+    - overlap promoters of that gene
+    - overlap enhancers of that gene
+- the average methylaton level of the DMRs in the 12 NA_pos/BA9_pos samples 
+that:
+    - overlap promoters of that gene
+    - overlap enhancers of that gene
+
+**NOTE:** By construction, all methylation measurements are at DMRs
+
+This is stored in `rna_atac_meth`, a data frame with list columns for the 
+nested data
+
+```{r}
+exp <- readRDS("../../RNA-seq/objects/elist_with_sv.rds")
+exp <- exp[, grep("pos", colnames(exp))]
+exp <- exp[, order(colnames(exp))]
+acc <- readRDS("../../ATAC-seq/objects/elist_with_sv.rds")
+acc <- acc[, grep("pos", colnames(acc))]
+acc <- acc[, order(colnames(acc))]
+ave_meth <- readRDS("../../Objects/ave-meth-NAvsBA9pos_DMRs.rds")
+ave_meth <- ave_meth[, grep("[BA9|NA]_pos", colnames(ave_meth))]
+
+sorted_tested_ocrs_overall_pos <- sort(GRanges(
+  read_csv("../../ATAC-seq/extdata/topTable.NA_posvsBA9_pos.ATAC-seq.csv.gz")))
+sorted_dars <- sort(dars_pos)
+p_no_e <- setdiff(names(promoters_by_gene), names(fantom5_enhancers_by_gene))
+fantom5_enhancers_by_gene_all_genes <-
+  c(fantom5_enhancers_by_gene, 
+    setNames(GRangesList(replicate(length(p_no_e), new("GRanges"))), p_no_e))
+rna_atac_meth <- 
+  data_frame(gene = rownames(exp),
+             db = ifelse(gene %in% pc_genes, "PC", "lncRNA"),
+             DE = gene %in% deg_names,
+             # NOTE: Don't use split because it coerces the matrix to a vector 
+             #       and drops the colnames
+             exp = lapply(gene, function(g) exp$E[g, , drop = FALSE]),
+             expLogFC = rna_seq_de_pos$gene_level[
+               match(gene, rna_seq_de_pos$gene_level$gene_id)]$logFC,
+             p_ol_atac = as.list(
+               t(findOverlaps(sorted_tested_ocrs_overall_pos,
+                              promoters_by_gene[gene]))),
+             pAcc = lapply(p_ol_atac, function(i) {
+               acc$E[i, , drop = FALSE]
+             }),
+             pDAR = relist(overlapsAny(sorted_tested_ocrs_overall_pos[
+               unlist(p_ol_atac)], 
+               dars_pos, type = "equal"),
+               p_ol_atac),
+             pLogFC = relist(sorted_tested_ocrs_overall_pos[
+               unlist(p_ol_atac)]$logFC,
+                           p_ol_atac),
+             e_ol_atac = as.list(
+               t(findOverlaps(sorted_tested_ocrs_overall_pos, 
+                              fantom5_enhancers_by_gene_all_genes[gene]))),
+             eAcc = lapply(e_ol_atac, function(i) {
+               acc$E[i, , drop = FALSE]
+             }),
+             eDAR = relist(overlapsAny(sorted_tested_ocrs_overall_pos[
+               unlist(e_ol_atac)], 
+               dars_pos, type = "equal"), 
+               e_ol_atac),
+             eLogFC = relist(sorted_tested_ocrs_overall_pos[
+               unlist(e_ol_atac)]$logFC,
+               e_ol_atac),
+             p_ol_meth = as.list(
+               t(findOverlaps(ave_meth, promoters_by_gene[gene]))),
+             pAveMeth = lapply(p_ol_meth, function(i) {
+               assay(ave_meth)[i, , drop = FALSE]
+             }),
+             pDMR = lapply(pAveMeth, function(x) rep(TRUE, nrow(x))),
+             pMeanDiff = relist(rowRanges(ave_meth)[
+               unlist(p_ol_meth)]$NAvsBA9pos_meanDiff,
+               p_ol_meth),
+             e_ol_meth = as.list(
+               t(findOverlaps(ave_meth,
+                              fantom5_enhancers_by_gene_all_genes[gene]))),
+             eAveMeth = lapply(e_ol_meth, function(i) {
+               assay(ave_meth)[i, , drop = FALSE]
+             }),
+             eDMR = lapply(eAveMeth, function(x) rep(TRUE, nrow(x))),
+             eMeanDiff = relist(rowRanges(ave_meth)[
+               unlist(e_ol_meth)]$NAvsBA9pos_meanDiff,
+                                e_ol_meth)) %>%
+  dplyr::select(-p_ol_atac, -e_ol_atac, -p_ol_meth, -e_ol_meth)
+
+# Add gene symbol
+g <- rna_atac_meth$gene
+g <- sapply(strsplit(g, "\\."), "[[", 1)
+grch37 <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", 
+                  host = "grch37.ensembl.org", 
+                  path = "/biomart/martservice",
+                  dataset = "hsapiens_gene_ensembl")
+bm <- getBM(filters = "ensembl_gene_id", 
+            attributes = c("ensembl_gene_id", "external_gene_name", 
+                           "entrezgene","description"),
+            values = g,
+            mart = grch37)
+colnames(bm) <- c("names", "external_gene_name", "entrezgene", "description") 
+i <- match(g, bm$names)
+symbol <- bm[i,]
+rna_atac_meth <- mutate(rna_atac_meth, 
+                        gene_symbol = symbol$external_gene_name)
+
+# Adding a columns, `npD`, `neD`, and  `npedD`, recording the number of `pD`, 
+# `eD`, and `peD`. This can be useful to filter on for genes with multiple  
+# epigenetic marks
+rna_atac_meth <- rna_atac_meth %>%
+  mutate(npD = pmap_int(list(pDAR, pDMR), sum),
+         neD = pmap_int(list(eDAR, eDMR), sum),
+         npeD = npD + neD)
+
+rm(g, i, bm, symbol)
+```
+
+# Functions
+
+- `plotRAM()` for plotting RNA-seq, ATAC-seq, and WGBS data for a gene
+
+```{r}
+plotRAM <- function(ram) {
+  # Grouping variables
+  lvls <- c("NAcc_pos", "BA9_pos")
+  e_grp <- factor(
+    ifelse(grepl("BA9", colnames(ram$exp[[1]])), "BA9_pos", "NAcc_pos"),
+    levels = lvls,
+    ordered = TRUE)
+  a_grp <- factor(
+    ifelse(grepl("BA9", colnames(ram$pAcc[[1]])), "BA9_pos", "NAcc_pos"),
+    levels = lvls,
+    ordered = TRUE)
+  m_grp <- factor(
+    ifelse(grepl("BA9", colnames(ram$pAveMeth[[1]])), "BA9_pos", "NAcc_pos"),
+    levels = lvls,
+    ordered = TRUE)
+  cols <- c(NAcc_pos = "chocolate1",
+            "BA9_pos" = "deepskyblue")
+  
+  op <- par(no.readonly = TRUE)
+  par(mfrow = c(3, 1))
+  for (i in seq_len(nrow(ram))) {
+    n_a <- nrow(ram$pAcc[[i]]) + nrow(ram$eAcc[[i]])
+    n_m <- nrow(ram$pAveMeth[[i]]) + nrow(ram$eAveMeth[[i]])
+    
+    # Expression
+    e <- ram$exp[[i]]
+    plot(x = jitter(rep(1, length(e))),
+         y = e,
+         col = cols[e_grp],
+         ylab = "RNA (CPM)",
+         xaxt = "n", 
+         xlab = "",
+         xlim = c(0.8, 1.2),
+         pch = 16,
+         main = ram$gene[[i]])
+    axis(side = 1, at = 1, label = ifelse(ram$DE[[i]], "DEG", "non-DEG"), 
+         las = 2)
+    
+    # Accessibility
+    a <- rbind(ram$pAcc[[i]], ram$eAcc[[i]])
+    if (n_a) {
+      plot(x = jitter(row(a)), 
+           y = as.vector(a), 
+           col = rep(cols[a_grp], each = nrow(a)),
+           ylab = "ATAC (CPM)", 
+           xaxt = "n",
+           xlab = "", 
+           xlim = c(0.5, nrow(a) + 0.5),
+           pch = rep(c(rep("p", nrow(ram$pAcc[[i]])),
+                       rep("e", nrow(ram$eAcc[[i]]))),
+                     ncol(a)))
+      axis(side = 1, at = seq_len(nrow(a)), 
+           label = ifelse(c(ram$pDAR[[i]], ram$eDAR[[i]]), "DAR", "non-DAR"), 
+           las = 2)
+    } else {
+      plot(1, type = "n", ylab = "ATAC (CPM)", xaxt = "n", xlab = "", yaxt = "n")
+    }
+    
+    # Methylation
+    m <- rbind(ram$pAveMeth[[i]], ram$eAveMeth[[i]])
+    if (n_m) {
+      plot(x = jitter(row(m)), 
+           y = as.vector(m), 
+           col = rep(cols[m_grp], each = nrow(m)),
+           ylab = "DMR (aveMeth)", 
+           xaxt = "n",
+           xlab = "", 
+           xlim = c(0.5, nrow(m) + 0.5),
+           pch = rep(c(rep("p", nrow(ram$pAveMeth[[i]])),
+                       rep("e", nrow(ram$eAveMeth[[i]]))),
+                     ncol(m)))
+      axis(side = 1, at = seq_len(nrow(m)), 
+           label = ifelse(c(ram$pDMR[[i]], ram$eDMR[[i]]), "DMR", "non-DMR"), 
+           las = 2)
+    } else {
+      plot(1, type = "n", ylab = "DMR (aveMeth)", xaxt = "n", xlab = "", yaxt = "n")
+    }
+    on.exit(par(op))
+    
+  }
+}
+```
+
+
+```{r, save}
+save.image("../objects/assays-and-features.rda", compress = "xz")
+```

@@ -1,0 +1,6 @@
+hub flow_sorted_brain_hub
+shortLabel BrainEpigenomeHub
+longLabel DNA methylation, chromatin accessibility, and gene expression data from NeuN flow-sorted human brain samples
+genomesFile genomes.txt
+email peter.hickey@gmail.com
+descriptionUrl https://s3.us-east-2.amazonaws.com/brainepigenome/hg19/docs/README.html

@@ -1,0 +1,1746 @@
+---
+title: "Context and enrichment/depetion of DMRs and DAPs with respect to chromHMM features"
+author: "Peter Hickey"
+date: "9 December 2016"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r, include=FALSE, setup}
+knitr::opts_chunk$set(echo = FALSE, comment = "#>", collapse = TRUE, 
+                      message = FALSE, results = "hide", warning = FALSE)
+load("../objects/assays-and-features.rda")
+source("../scripts/functions.R")
+cols <- c("E068" = "chocolate1", "E069" = "deeppink", "E071" = "darkgrey", 
+          "E073" = "deepskyblue")
+```
+
+```{r, message = FALSE, pkgs}
+library(GenomicRanges)
+library(rtracklayer)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(UpSetR)
+```
+
+# chromHMM context of DMR-CpGs and bigDMR-CpGs
+
+Unlike the GENCODE-based features, chromHMM features are cell type-specific. We 
+use 4 different chromHMM tracks:
+
+`r knitr::kable(chromHMM_info[c(2, 3, 4, 6), ])`
+
+The four tracks are approximately 80% pairwise identical, but there is 
+still a reasonable amount that is unique to each track:
+
+```{r, eval = TRUE, echo = TRUE, results = "markup"}
+z <- list("AH46921" = AH46921, "AH46922" = AH46922, "AH46924" = AH46924, 
+          "AH46926" = AH46926)
+
+as.data.frame(
+  lapply(list(c(1, 2), c(1, 3), c(1, 4), c(2, 3), c(2, 4), c(3, 4)), function(i) {
+    zz <- GenomicRanges::intersect(z[[i[1]]], z[[i[2]]])
+    val <- list(round(sum(as.numeric(sum(width(zz)))) / 
+                        sum(as.numeric(sum(width(z[[i[1]]])))) * 100, 0),
+                round(sum(as.numeric(sum(width(zz)))) / 
+                        sum(as.numeric(sum(width(z[[i[2]]])))) * 100, 0))
+    setNames(val, names(z)[i])
+  }))
+
+as.data.frame(
+  lapply(list(c(1, 2), c(1, 3), c(1, 4), c(2, 3), c(2, 4), c(3, 4)), function(i) {
+    zz <- GenomicRanges::intersect(z[[i[1]]], z[[i[2]]])
+    val <- list(round(sum(width(zz)) / sum(width(z[[i[1]]])) * 100, 0),
+                round(sum(width(zz)) / sum(width(z[[i[2]]])) * 100, 0))
+    setNames(val, names(z)[c(i[1], i[2])])
+  }))
+```
+
+Consequently, it is useful to stratify our DMRs and DAPs by the 
+directionality of the `meanDiff` and `logFC` when comparing to chromHMM tracks.
+
+- hypo-DMRs: Those DMRs that are hypomethylated in NA_pos relative to BA9_pos
+- hyper-DMRs: Those DMRs that are hypermethylated in NA_pos relative to BA9_pos
+
+There are more hyper-DMRs (n = `r length(dmrs_NAvsBA9pos_hyper)`) than hypo-DMRs 
+(n = `r length(dmrs_NAvsBA9pos_hypo)`). Similarly, there are more hyper-DMR-CpGs 
+(n = `r length(dmrs_NAvsBA9pos_hyper_cpgs)`) than hypo-DMR-CpGs 
+(n = `r length(dmrs_NAvsBA9pos_hypo_cpgs)`).
+
+**NOTE:** An *UpSet* plot isn't perhaps appropriate/necessary since chromHMM 
+categories are disjoint by definition and each CpG can only fall in a single 
+category. Could just take upper bar plot for figure.
+
+We run two analyses:
+
+1. Using the 13,074 POS DMRs
+2. Using the 12,895 NA_pos vs. BA9_pos DMRs accounting for the direction of the DMR
+
+## DMR-CpGs
+
+### POS DMRs
+
+```{r}
+x <- makeUpSetRList(dmrs_pos_cpgs, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(dmrs_pos_cpgs, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(dmrs_pos_cpgs, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(dmrs_pos_cpgs, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+### Hypo NA_pos vs. BA9_pos DMRs
+
+```{r}
+x <- makeUpSetRList(dmrs_NAvsBA9pos_hypo_cpgs, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(dmrs_NAvsBA9pos_hypo_cpgs, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(dmrs_NAvsBA9pos_hypo_cpgs, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(dmrs_NAvsBA9pos_hypo_cpgs, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+### Hyper NA_pos vs. BA9_pos DMRs
+
+```{r}
+x <- makeUpSetRList(dmrs_NAvsBA9pos_hyper_cpgs, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(dmrs_NAvsBA9pos_hyper_cpgs, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(dmrs_NAvsBA9pos_hyper_cpgs, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(dmrs_NAvsBA9pos_hyper_cpgs, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+## bigDMR-CpGs
+
+### POS DMRs
+
+```{r}
+x <- makeUpSetRList(big_dmrs_pos_cpgs, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_dmrs_pos_cpgs, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_dmrs_pos_cpgs, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_dmrs_pos_cpgs, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+### Hypo NA_pos vs. BA9_pos DMRs
+
+```{r}
+x <- makeUpSetRList(big_dmrs_NAvsBA9pos_hypo_cpgs, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_dmrs_NAvsBA9pos_hypo_cpgs, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_dmrs_NAvsBA9pos_hypo_cpgs, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_dmrs_NAvsBA9pos_hypo_cpgs, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+### Hyper NA_pos vs. BA9_pos DMRs
+
+```{r}
+x <- makeUpSetRList(big_dmrs_NAvsBA9pos_hyper_cpgs, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_dmrs_NAvsBA9pos_hyper_cpgs, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_dmrs_NAvsBA9pos_hyper_cpgs, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_dmrs_NAvsBA9pos_hyper_cpgs, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+## Summary
+
+### POS DMRs
+
+- Choice of cell type doesn't make a big difference for top 4 categories
+  - Most DMR-CpGs and bigDMR-CpGs hit 'Quiescent/Low' followed by 'Weak Transcription', 'Enhancers' and 'Weak Repressed PolyComb'
+  - Not totally surprising given that 'Quiescent/Low' and 'Weak transcription' are the two largest states
+  - 'Enhancers' are more interesting
+
+### NA_pos vs. BA9_pos DMRs
+
+- Choice of cell type doesn't make a big difference for top 4-5 categories
+  - Most hypo-DMR-CpGs, hyper-DMR-CpGs, hypo-bigDMR-CpGs, and hyper-bigDMR-CpGs hit 'Quiescent/Low' followed by 'Weak Transcription' and 'Enhancers'
+  - Not totally surprising given that 'Quiescent/Low' and 'Weak transcription' are the two largest states
+  - 'Enhancers' are more interesting
+
+# chromHMM context of ATAC peaks, DAPs, and bigDAPs
+
+Like for NA_pos vs. BA9_pos DMRs, we stratify DAPs and bigDAPs by hypo and 
+hyper. It is not necessary to stratify the overall set of ATAC-seq peaks.
+
+## ATAC-peaks
+
+```{r}
+x <- makeUpSetRList(atac_peaks, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(atac_peaks, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(atac_peaks, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(atac_peaks, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+## DAPs
+
+### Hypo NA_pos vs. BA9_pos DAPs
+
+```{r}
+x <- makeUpSetRList(daps_hypo, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(daps_hypo, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(daps_hypo, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(daps_hypo, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+### Hyper NA_pos vs. BA9_pos DAPs
+
+```{r}
+x <- makeUpSetRList(daps_hyper, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(daps_hyper, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(daps_hyper, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(daps_hyper, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+## bigDAPs
+
+### Hypo NA_pos vs. BA9_pos DAPs
+
+```{r}
+x <- makeUpSetRList(big_daps_hypo, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE)
+
+x <- makeUpSetRList(big_daps_hypo, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE)
+
+x <- makeUpSetRList(big_daps_hypo, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE)
+
+x <- makeUpSetRList(big_daps_hypo, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE)
+```
+
+### Hyper NA_pos vs. BA9_pos DAPs
+
+```{r}
+x <- makeUpSetRList(big_daps_hyper, AH46921)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_daps_hyper, AH46922)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_daps_hyper, AH46924)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+
+x <- makeUpSetRList(big_daps_hyper, AH46926)
+upset(fromList(x), order.by = "freq", nsets = length(x), keep.order = TRUE,
+      sets = names(x))
+```
+
+## Summary
+
+- Choice of cell type doesn't make a big difference (perhaps a little bigger than other in above)
+  - Most hypo-DAPs, hyper-DAPs, hypo-bigDAPs, and hyper-bigDAPs hit 'Quiescent/Low' followed by 'Weak Transcription', 'Enhancers', and 'Weak Repressed PolyComb'
+  - Not totally surprising given that 'Quiescent/Low', 'Weak transcription', and 'Weak Repressed Polycomb' are the two largest states
+  - 'Enhancers' are a little more interesting
+
+# chromHMM enrichment/depletion of DMR-CpGs and bigDMR-CpGs
+
+## POS DMRs
+
+```{r}
+or_dmrs_pos_cpgs_AH46921 <- 
+  cbind(FT(dmrs_pos_cpgs, non_dmrs_pos_cpgs, AH46921, "E068"),
+        data.frame(source = factor("DMR-CpGs", c("DMR-CpGs", "bigDMR-CpGs"))))
+        
+or_big_dmrs_pos_cpgs_AH46921 <- 
+  cbind(FT(big_dmrs_pos_cpgs, non_big_dmrs_pos_cpgs, AH46921, 
+           "E068"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", "bigDMR-CpGs"))))
+        
+or_dmrs_pos_cpgs_AH46922 <- 
+  cbind(FT(dmrs_pos_cpgs, non_dmrs_pos_cpgs, AH46922, "E069"),
+        data.frame(source = factor("DMR-CpGs", c("DMR-CpGs", "bigDMR-CpGs"))))
+or_big_dmrs_pos_cpgs_AH46922 <- 
+  cbind(FT(big_dmrs_pos_cpgs, non_big_dmrs_pos_cpgs, AH46922, "E069"),
+        data.frame(source = factor("bigDMR-CpGs",  
+                                   c("DMR-CpGs", "bigDMR-CpGs"))))
+
+or_dmrs_pos_cpgs_AH46924 <- 
+  cbind(FT(dmrs_pos_cpgs, non_dmrs_pos_cpgs, AH46924, "E071"),
+        data.frame(source = factor("DMR-CpGs", c("DMR-CpGs", "bigDMR-CpGs"))))
+or_big_dmrs_pos_cpgs_AH46924 <- 
+  cbind(FT(big_dmrs_pos_cpgs, non_big_dmrs_pos_cpgs, AH46924, "E071"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", "bigDMR-CpGs"))))
+
+or_dmrs_pos_cpgs_AH46926 <- 
+  cbind(FT(dmrs_pos_cpgs, non_dmrs_pos_cpgs, AH46926, "E073"),
+        data.frame(source = factor("DMR-CpGs", c("DMR-CpGs", "bigDMR-CpGs"))))
+or_big_dmrs_pos_cpgs_AH46926 <- 
+  cbind(FT(big_dmrs_pos_cpgs, non_big_dmrs_pos_cpgs, AH46926, "E073"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs",  "bigDMR-CpGs"))))
+
+ggplot(rbind(or_dmrs_pos_cpgs_AH46921,
+             or_big_dmrs_pos_cpgs_AH46921,
+             or_dmrs_pos_cpgs_AH46922,
+             or_big_dmrs_pos_cpgs_AH46922,
+             or_dmrs_pos_cpgs_AH46924,
+             or_big_dmrs_pos_cpgs_AH46924,
+             or_dmrs_pos_cpgs_AH46926,
+             or_big_dmrs_pos_cpgs_AH46926), 
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ .) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("chromHMM") + 
+  ylab("log2(OR) with 95% CI")
+
+ggplot(rbind(or_dmrs_pos_cpgs_AH46921,
+             or_dmrs_pos_cpgs_AH46922,
+             or_dmrs_pos_cpgs_AH46924,
+             or_dmrs_pos_cpgs_AH46926),
+       aes(x = feature, y = log2(estimate), col = db)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DMR-CpGs: POS DMRs") + 
+  ylab("log2(OR) with 95% CI") + 
+  scale_colour_manual(values = cols)
+
+ave_or_dmrs_pos_cpgs <- 
+  rbind(or_dmrs_pos_cpgs_AH46921,
+        or_dmrs_pos_cpgs_AH46922,
+        or_dmrs_pos_cpgs_AH46924,
+        or_dmrs_pos_cpgs_AH46926) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_dmrs_pos_cpgs %>%
+  ggplot(aes(x = feature2)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("DMR-CpGs: POS DMRs")
+
+ave_or_big_dmrs_pos_cpgs <- 
+  rbind(or_big_dmrs_pos_cpgs_AH46921,
+        or_big_dmrs_pos_cpgs_AH46922,
+        or_big_dmrs_pos_cpgs_AH46924,
+        or_big_dmrs_pos_cpgs_AH46926) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_big_dmrs_pos_cpgs %>%
+  ggplot(aes(x = feature2)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("bigDMR-CpGs")
+```
+
+## NA_pos vs. BA9_pos DMRs
+
+```{r}
+or_dmrs_NAvsBA9pos_cpgs_AH46921_hypo <- 
+  cbind(FT(dmrs_NAvsBA9pos_hypo_cpgs, non_dmrs_NAvsBA9pos_cpgs, AH46921, 
+           "E068"),
+        data.frame(source = factor("DMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hypo"))
+or_big_dmrs_NAvsBA9pos_cpgs_AH46921_hypo <- 
+  cbind(FT(big_dmrs_NAvsBA9pos_hypo_cpgs, non_big_dmrs_NAvsBA9pos_cpgs,
+           AH46921, "E068"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hypo"))
+or_dmrs_NAvsBA9pos_cpgs_AH46921_hyper <- 
+  cbind(FT(dmrs_NAvsBA9pos_hyper_cpgs, non_dmrs_NAvsBA9pos_cpgs, AH46921, 
+           "E068"),
+        data.frame(source = factor("DMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hyper"))
+or_big_dmrs_NAvsBA9pos_cpgs_AH46921_hyper <- 
+  cbind(FT(big_dmrs_NAvsBA9pos_hyper_cpgs, non_big_dmrs_NAvsBA9pos_cpgs,
+           AH46921, "E068"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hyper"))
+
+or_dmrs_NAvsBA9pos_cpgs_AH46922_hypo <- 
+  cbind(FT(dmrs_NAvsBA9pos_hypo_cpgs, non_dmrs_NAvsBA9pos_cpgs, AH46922, 
+           "E069"),
+        data.frame(source = factor("DMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hypo"))
+or_big_dmrs_NAvsBA9pos_cpgs_AH46922_hypo <- 
+  cbind(FT(big_dmrs_NAvsBA9pos_hypo_cpgs, non_big_dmrs_NAvsBA9pos_cpgs,
+           AH46922, "E069"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hypo"))
+or_dmrs_NAvsBA9pos_cpgs_AH46922_hyper <- 
+  cbind(FT(dmrs_NAvsBA9pos_hyper_cpgs, non_dmrs_NAvsBA9pos_cpgs, AH46922, 
+           "E069"),
+        data.frame(source = factor("DMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hyper"))
+or_big_dmrs_NAvsBA9pos_cpgs_AH46922_hyper <- 
+  cbind(FT(big_dmrs_NAvsBA9pos_hyper_cpgs, non_big_dmrs_NAvsBA9pos_cpgs,
+           AH46922, "E069"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hyper"))
+
+or_dmrs_NAvsBA9pos_cpgs_AH46924_hypo <- 
+  cbind(FT(dmrs_NAvsBA9pos_hypo_cpgs, non_dmrs_NAvsBA9pos_cpgs, AH46924, 
+           "E071"),
+        data.frame(source = factor("DMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hypo"))
+or_big_dmrs_NAvsBA9pos_cpgs_AH46924_hypo <- 
+  cbind(FT(big_dmrs_NAvsBA9pos_hypo_cpgs, non_big_dmrs_NAvsBA9pos_cpgs,
+           AH46924, "E071"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hypo"))
+or_dmrs_NAvsBA9pos_cpgs_AH46924_hyper <- 
+  cbind(FT(dmrs_NAvsBA9pos_hyper_cpgs, non_dmrs_NAvsBA9pos_cpgs, AH46924, 
+           "E071"),
+        data.frame(source = factor("DMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hyper"))
+or_big_dmrs_NAvsBA9pos_cpgs_AH46924_hyper <- 
+  cbind(FT(big_dmrs_NAvsBA9pos_hyper_cpgs, non_big_dmrs_NAvsBA9pos_cpgs,
+           AH46924, "E071"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hyper"))
+
+or_dmrs_NAvsBA9pos_cpgs_AH46926_hypo <- 
+  cbind(FT(dmrs_NAvsBA9pos_hypo_cpgs, non_dmrs_NAvsBA9pos_cpgs, AH46926, 
+           "E073"),
+        data.frame(source = factor("DMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hypo"))
+or_big_dmrs_NAvsBA9pos_cpgs_AH46926_hypo <- 
+  cbind(FT(big_dmrs_NAvsBA9pos_hypo_cpgs, non_big_dmrs_NAvsBA9pos_cpgs,
+           AH46926, "E073"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hypo"))
+or_dmrs_NAvsBA9pos_cpgs_AH46926_hyper <- 
+  cbind(FT(dmrs_NAvsBA9pos_hyper_cpgs, non_dmrs_NAvsBA9pos_cpgs, AH46926, 
+           "E073"),
+        data.frame(source = factor("DMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hyper"))
+or_big_dmrs_NAvsBA9pos_cpgs_AH46926_hyper <- 
+  cbind(FT(big_dmrs_NAvsBA9pos_hyper_cpgs, non_big_dmrs_NAvsBA9pos_cpgs,
+           AH46926, "E073"),
+        data.frame(source = factor("bigDMR-CpGs", 
+                                   c("DMR-CpGs", 
+                                     "bigDMR-CpGs")),
+                   direction = "hyper"))
+
+ggplot(rbind(or_dmrs_NAvsBA9pos_cpgs_AH46921_hypo,
+             or_big_dmrs_NAvsBA9pos_cpgs_AH46921_hypo,
+             or_dmrs_NAvsBA9pos_cpgs_AH46921_hyper,
+             or_big_dmrs_NAvsBA9pos_cpgs_AH46921_hyper,
+             or_dmrs_NAvsBA9pos_cpgs_AH46922_hypo,
+             or_big_dmrs_NAvsBA9pos_cpgs_AH46922_hypo,
+             or_dmrs_NAvsBA9pos_cpgs_AH46922_hyper,
+             or_big_dmrs_NAvsBA9pos_cpgs_AH46922_hyper,
+             or_dmrs_NAvsBA9pos_cpgs_AH46924_hypo,
+             or_big_dmrs_NAvsBA9pos_cpgs_AH46924_hypo,
+             or_dmrs_NAvsBA9pos_cpgs_AH46924_hyper,
+             or_big_dmrs_NAvsBA9pos_cpgs_AH46924_hyper,
+             or_dmrs_NAvsBA9pos_cpgs_AH46926_hypo,
+             or_big_dmrs_NAvsBA9pos_cpgs_AH46926_hypo,
+             or_dmrs_NAvsBA9pos_cpgs_AH46926_hyper,
+             or_big_dmrs_NAvsBA9pos_cpgs_AH46926_hyper), 
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("chromHMM") + 
+  ylab("log2(OR) with 95% CI")
+
+ggplot(rbind(or_dmrs_NAvsBA9pos_cpgs_AH46921_hypo,
+             or_dmrs_NAvsBA9pos_cpgs_AH46921_hyper,
+             or_dmrs_NAvsBA9pos_cpgs_AH46922_hypo,
+             or_dmrs_NAvsBA9pos_cpgs_AH46922_hyper,
+             or_dmrs_NAvsBA9pos_cpgs_AH46924_hypo,
+             or_dmrs_NAvsBA9pos_cpgs_AH46924_hyper,
+             or_dmrs_NAvsBA9pos_cpgs_AH46926_hypo,
+             or_dmrs_NAvsBA9pos_cpgs_AH46926_hyper),
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("chromHMM") + 
+  ylab("log2(OR) with 95% CI")
+
+ave_or_dmrs_NAvsBA9pos_cpgs <- 
+  rbind(or_dmrs_NAvsBA9pos_cpgs_AH46921_hypo,
+        or_dmrs_NAvsBA9pos_cpgs_AH46921_hyper,
+        or_dmrs_NAvsBA9pos_cpgs_AH46922_hypo,
+        or_dmrs_NAvsBA9pos_cpgs_AH46922_hyper,
+        or_dmrs_NAvsBA9pos_cpgs_AH46924_hypo,
+        or_dmrs_NAvsBA9pos_cpgs_AH46924_hyper,
+        or_dmrs_NAvsBA9pos_cpgs_AH46926_hypo,
+        or_dmrs_NAvsBA9pos_cpgs_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_dmrs_NAvsBA9pos_cpgs %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("DMR-CpGs")
+
+ave_or_big_dmrs_NAvsBA9pos_cpgs <- 
+  rbind(or_big_dmrs_NAvsBA9pos_cpgs_AH46921_hypo,
+        or_big_dmrs_NAvsBA9pos_cpgs_AH46921_hyper,
+        or_big_dmrs_NAvsBA9pos_cpgs_AH46922_hypo,
+        or_big_dmrs_NAvsBA9pos_cpgs_AH46922_hyper,
+        or_big_dmrs_NAvsBA9pos_cpgs_AH46924_hypo,
+        or_big_dmrs_NAvsBA9pos_cpgs_AH46924_hyper,
+        or_big_dmrs_NAvsBA9pos_cpgs_AH46926_hypo,
+        or_big_dmrs_NAvsBA9pos_cpgs_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_big_dmrs_NAvsBA9pos_cpgs %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("bigDMR-CpGs")
+```
+
+## Summary
+
+### POS DMRs
+
+- DMR-CpGs vs. bigDMR-CpGs
+
+### NA_pos vs. BA9_pos DMRs
+
+- DMR-CpGs vs. bigDMR-CpGs
+  - Direction of signal is almost always the same
+  - Magnitude of signal is also fairly similar
+  - **Removed bigDMR-CpGs from plot to better see DMR-CpGs**
+- Choice of chromHMM track
+  - All four tracks give very similar results, therefore reasonable to average over these
+- Based on average track
+  - Most enriched: 'Transc. at a gene 5' and 3'', 'Genic enhancers', 'Flanking Active TSS', 'Enhancers', 'Bivalent Enhancers'
+  - Most depleted: 'Heterochromatin', 'ZNF genes & repeats', 'Quiescent/Low'
+
+# chromHMM enrichment/depletion of ATAC-seq peaks, DAPs, and bigDAPs
+
+We consider enrichment of:
+
+1. Peaks vs. rest of genome
+2. DAPS vs. rest of genome
+    a. bigDAPs vs. rest of genome
+3. DAPs vs. null-peaks
+    a. bigDAPs vs. null-peaks
+4. DAPs vs. non-DAPs
+    a. bigDAPs vs. non-DAPs
+
+Note that the non-DAPs will still have some 'differential' peaks 
+(`adj.P.Val < 0.05` but with a `abs(logFC) < 1`) whereas the null-peaks are 
+those with `adj.P.Val > 0.05`.
+
+We consider two different ways to calculate enrichment using ATAC-seq data:
+
+A. Counting peaks (only 3, 4)
+B. Counting bases (1, 2, 3, 4)
+
+Like for NA_pos vs. BA9_pos DMRs, we stratify DAPs and bigDAPs by hypo and 
+hyper.
+
+## Counting peaks
+
+### DAPs vs. null-peaks
+
+```{r}
+or_daps_vs_null_AH46921_hypo <- 
+  cbind(FT(daps_hypo, null_peaks, AH46921, 
+           "E068"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_big_daps_vs_null_AH46921_hypo <- 
+  cbind(FT(big_daps_hypo, null_peaks,
+           AH46921, "E068"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_daps_vs_null_AH46921_hyper <- 
+  cbind(FT(daps_hyper, null_peaks, AH46921, 
+           "E068"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_big_daps_vs_null_AH46921_hyper <- 
+  cbind(FT(big_daps_hyper, null_peaks,
+           AH46921, "E068"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+or_daps_vs_null_AH46922_hypo <- 
+  cbind(FT(daps_hypo, null_peaks, AH46922, 
+           "E069"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_big_daps_vs_null_AH46922_hypo <- 
+  cbind(FT(big_daps_hypo, null_peaks,
+           AH46922, "E069"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_daps_vs_null_AH46922_hyper <- 
+  cbind(FT(daps_hyper, null_peaks, AH46922, 
+           "E069"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_big_daps_vs_null_AH46922_hyper <- 
+  cbind(FT(big_daps_hyper, null_peaks,
+           AH46922, "E069"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+or_daps_vs_null_AH46924_hypo <- 
+  cbind(FT(daps_hypo, null_peaks, AH46924, 
+           "E071"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_big_daps_vs_null_AH46924_hypo <- 
+  cbind(FT(big_daps_hypo, null_peaks,
+           AH46924, "E071"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_daps_vs_null_AH46924_hyper <- 
+  cbind(FT(daps_hyper, null_peaks, AH46924, 
+           "E071"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_big_daps_vs_null_AH46924_hyper <- 
+  cbind(FT(big_daps_hyper, null_peaks,
+           AH46924, "E071"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+or_daps_vs_null_AH46926_hypo <- 
+  cbind(FT(daps_hypo, null_peaks, AH46926, 
+           "E073"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_big_daps_vs_null_AH46926_hypo <- 
+  cbind(FT(big_daps_hypo, non_big_daps,
+           AH46926, "E073"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_daps_vs_null_AH46926_hyper <- 
+  cbind(FT(daps_hyper, null_peaks, AH46926, 
+           "E073"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_big_daps_vs_null_AH46926_hyper <- 
+  cbind(FT(big_daps_hyper, null_peaks,
+           AH46926, "E073"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+ggplot(rbind(or_daps_vs_null_AH46921_hypo,
+             or_big_daps_vs_null_AH46921_hypo,
+             or_daps_vs_null_AH46921_hyper,
+             or_big_daps_vs_null_AH46921_hyper,
+             or_daps_vs_null_AH46922_hypo,
+             or_big_daps_vs_null_AH46922_hypo,
+             or_daps_vs_null_AH46922_hyper,
+             or_big_daps_vs_null_AH46922_hyper,
+             or_daps_vs_null_AH46924_hypo,
+             or_big_daps_vs_null_AH46924_hypo,
+             or_daps_vs_null_AH46924_hyper,
+             or_big_daps_vs_null_AH46924_hyper,
+             or_daps_vs_null_AH46926_hypo,
+             or_big_daps_vs_null_AH46926_hypo,
+             or_daps_vs_null_AH46926_hyper,
+             or_big_daps_vs_null_AH46926_hyper), 
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. null-peaks (chromHMM)") + 
+  ylab("log2(OR) with 95% CI")
+
+ggplot(rbind(or_daps_vs_null_AH46921_hypo,
+             or_daps_vs_null_AH46921_hyper,
+             or_daps_vs_null_AH46922_hypo,
+             or_daps_vs_null_AH46922_hyper,
+             or_daps_vs_null_AH46924_hypo,
+             or_daps_vs_null_AH46924_hyper,
+             or_daps_vs_null_AH46926_hypo,
+             or_daps_vs_null_AH46926_hyper),
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. null-peaks (chromHMM)") + 
+  ylab("log2(OR) with 95% CI")
+
+ave_or_daps_vs_null <- rbind(or_daps_vs_null_AH46921_hypo,
+                             or_daps_vs_null_AH46921_hyper,
+                             or_daps_vs_null_AH46922_hypo,
+                             or_daps_vs_null_AH46922_hyper,
+                             or_daps_vs_null_AH46924_hypo,
+                             or_daps_vs_null_AH46924_hyper,
+                             or_daps_vs_null_AH46926_hypo,
+                             or_daps_vs_null_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_daps_vs_null %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("DAPs vs. null-peaks (chromHMM)")
+
+ave_or_big_daps_vs_null <- 
+  rbind(or_big_daps_vs_null_AH46921_hypo,
+        or_big_daps_vs_null_AH46921_hyper,
+        or_big_daps_vs_null_AH46922_hypo,
+        or_big_daps_vs_null_AH46922_hyper,
+        or_big_daps_vs_null_AH46924_hypo,
+        or_big_daps_vs_null_AH46924_hyper,
+        or_big_daps_vs_null_AH46926_hypo,
+        or_big_daps_vs_null_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_big_daps_vs_null %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("bigDAPs vs. null-peaks (chromHMM)")
+```
+
+### DAPs vs. non-DAPs
+
+```{r}
+or_daps_vs_non_daps_AH46921_hypo <- 
+  cbind(FT(daps_hypo, non_daps, AH46921, 
+           "E068"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_big_daps_vs_non_big_daps_AH46921_hypo <- 
+  cbind(FT(big_daps_hypo, non_big_daps,
+           AH46921, "E068"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_daps_vs_non_daps_AH46921_hyper <- 
+  cbind(FT(daps_hyper, non_daps, AH46921, 
+           "E068"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_big_daps_vs_non_big_daps_AH46921_hyper <- 
+  cbind(FT(big_daps_hyper, non_big_daps,
+           AH46921, "E068"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+or_daps_vs_non_daps_AH46922_hypo <- 
+  cbind(FT(daps_hypo, non_daps, AH46922, 
+           "E069"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_big_daps_vs_non_big_daps_AH46922_hypo <- 
+  cbind(FT(big_daps_hypo, non_big_daps,
+           AH46922, "E069"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_daps_vs_non_daps_AH46922_hyper <- 
+  cbind(FT(daps_hyper, non_daps, AH46922, 
+           "E069"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_big_daps_vs_non_big_daps_AH46922_hyper <- 
+  cbind(FT(big_daps_hyper, non_big_daps,
+           AH46922, "E069"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+or_daps_vs_non_daps_AH46924_hypo <- 
+  cbind(FT(daps_hypo, non_daps, AH46924, 
+           "E071"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_big_daps_vs_non_big_daps_AH46924_hypo <- 
+  cbind(FT(big_daps_hypo, non_big_daps,
+           AH46924, "E071"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_daps_vs_non_daps_AH46924_hyper <- 
+  cbind(FT(daps_hyper, non_daps, AH46924, 
+           "E071"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_big_daps_vs_non_big_daps_AH46924_hyper <- 
+  cbind(FT(big_daps_hyper, non_big_daps,
+           AH46924, "E071"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+or_daps_vs_non_daps_AH46926_hypo <- 
+  cbind(FT(daps_hypo, non_daps, AH46926, 
+           "E073"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_big_daps_vs_non_big_daps_AH46926_hypo <- 
+  cbind(FT(big_daps_hypo, non_big_daps,
+           AH46926, "E073"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_daps_vs_non_daps_AH46926_hyper <- 
+  cbind(FT(daps_hyper, non_daps, AH46926, 
+           "E073"),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_big_daps_vs_non_big_daps_AH46926_hyper <- 
+  cbind(FT(big_daps_hyper, non_big_daps,
+           AH46926, "E073"),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+ggplot(rbind(or_daps_vs_non_daps_AH46921_hypo,
+             or_big_daps_vs_non_big_daps_AH46921_hypo,
+             or_daps_vs_non_daps_AH46921_hyper,
+             or_big_daps_vs_non_big_daps_AH46921_hyper,
+             or_daps_vs_non_daps_AH46922_hypo,
+             or_big_daps_vs_non_big_daps_AH46922_hypo,
+             or_daps_vs_non_daps_AH46922_hyper,
+             or_big_daps_vs_non_big_daps_AH46922_hyper,
+             or_daps_vs_non_daps_AH46924_hypo,
+             or_big_daps_vs_non_big_daps_AH46924_hypo,
+             or_daps_vs_non_daps_AH46924_hyper,
+             or_big_daps_vs_non_big_daps_AH46924_hyper,
+             or_daps_vs_non_daps_AH46926_hypo,
+             or_big_daps_vs_non_big_daps_AH46926_hypo,
+             or_daps_vs_non_daps_AH46926_hyper,
+             or_big_daps_vs_non_big_daps_AH46926_hyper), 
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. non-DAPs (chromHMM)") + 
+  ylab("log2(OR) with 95% CI")
+
+ggplot(rbind(or_daps_vs_non_daps_AH46921_hypo,
+             or_daps_vs_non_daps_AH46921_hyper,
+             or_daps_vs_non_daps_AH46922_hypo,
+             or_daps_vs_non_daps_AH46922_hyper,
+             or_daps_vs_non_daps_AH46924_hypo,
+             or_daps_vs_non_daps_AH46924_hyper,
+             or_daps_vs_non_daps_AH46926_hypo,
+             or_daps_vs_non_daps_AH46926_hyper),
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. non-DAPs (chromHMM)") + 
+  ylab("log2(OR) with 95% CI")
+
+ave_or_daps_vs_non_daps <- 
+  rbind(or_daps_vs_non_daps_AH46921_hypo,
+        or_daps_vs_non_daps_AH46921_hyper,
+        or_daps_vs_non_daps_AH46922_hypo,
+        or_daps_vs_non_daps_AH46922_hyper,
+        or_daps_vs_non_daps_AH46924_hypo,
+        or_daps_vs_non_daps_AH46924_hyper,
+        or_daps_vs_non_daps_AH46926_hypo,
+        or_daps_vs_non_daps_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_daps_vs_non_daps %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("DAPs vs. non-DAPs (chromHMM)")
+
+ave_or_big_daps_vs_non_big_daps <-
+  rbind(or_big_daps_vs_non_big_daps_AH46921_hypo,
+        or_big_daps_vs_non_big_daps_AH46921_hyper,
+        or_big_daps_vs_non_big_daps_AH46922_hypo,
+        or_big_daps_vs_non_big_daps_AH46922_hyper,
+        or_big_daps_vs_non_big_daps_AH46924_hypo,
+        or_big_daps_vs_non_big_daps_AH46924_hyper,
+        or_big_daps_vs_non_big_daps_AH46926_hypo,
+        or_big_daps_vs_non_big_daps_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_big_daps_vs_non_big_daps %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("bigDAPs vs. non-DAPs (chromHMM)")
+```
+
+## Counting bases
+
+### Peaks vs. rest of genome
+
+```{r}
+or_bp_peaks_AH46921 <- 
+  cbind(FT2(atac_peaks, AH46921, "E068", sl),
+        data.frame(source = "peaks"))
+
+or_bp_peaks_AH46922 <- 
+  cbind(FT2(atac_peaks, AH46922, "E069", sl),
+        data.frame(source = "peaks"))
+
+or_bp_peaks_AH46924 <- 
+  cbind(FT2(atac_peaks, AH46924, "E071", sl),
+        data.frame(source = "peaks"))
+
+or_bp_peaks_AH46926 <- 
+  cbind(FT2(atac_peaks, AH46926, "E073", sl),
+        data.frame(source = "peaks"))
+
+ggplot(rbind(or_bp_peaks_AH46921,
+             or_bp_peaks_AH46922,
+             or_bp_peaks_AH46924,
+             or_bp_peaks_AH46926), 
+       aes(x = feature, y = log2(estimate), col = db)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("Peaks vs. rest of genome (bp)") +
+  ylab("log2(OR) with 95% CI") + 
+  scale_colour_manual(values = cols)
+
+ave_or_bp_peaks <- rbind(or_bp_peaks_AH46921,
+                         or_bp_peaks_AH46922,
+                         or_bp_peaks_AH46924,
+                         or_bp_peaks_AH46926) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_bp_peaks %>%
+  ggplot(aes(x = feature2)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("Peaks vs. rest of genome (bp)")
+```
+
+### DAPs vs. rest of genome
+
+```{r}
+or_bp_daps_AH46921_hypo <- 
+  cbind(FT2(daps_hypo, AH46921, "E068", sl),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_AH46921_hypo <- 
+  cbind(FT2(big_daps_hypo, AH46921, "E068", sl),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_AH46921_hyper <- 
+  cbind(FT2(daps_hyper, AH46921, "E068", sl),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_AH46921_hyper <- 
+  cbind(FT2(big_daps_hyper, AH46921, "E068", sl),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+or_bp_daps_AH46922_hypo <- 
+  cbind(FT2(daps_hypo, AH46922, "E069", sl),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_AH46922_hypo <- 
+  cbind(FT2(big_daps_hypo, AH46922, "E069", sl),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_AH46922_hyper <- 
+  cbind(FT2(daps_hyper, AH46922, "E069", sl),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_AH46922_hyper <- 
+  cbind(FT2(big_daps_hyper, AH46922, "E069", sl),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+or_bp_daps_AH46924_hypo <- 
+  cbind(FT2(daps_hypo, AH46924, "E071", sl),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_AH46924_hypo <- 
+  cbind(FT2(big_daps_hypo, AH46924, "E071", sl),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_AH46924_hyper <- 
+  cbind(FT2(daps_hyper, AH46924, "E071", sl),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_AH46924_hyper <- 
+  cbind(FT2(big_daps_hyper, AH46924, "E071", sl),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+or_bp_daps_AH46926_hypo <- 
+  cbind(FT2(daps_hypo, AH46926, "E073", sl),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_AH46926_hypo <- 
+  cbind(FT2(big_daps_hypo, AH46926, "E073", sl),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_AH46926_hyper <- 
+  cbind(FT2(daps_hyper, AH46926, "E073", sl),
+        data.frame(source = factor("DAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_AH46926_hyper <- 
+  cbind(FT2(big_daps_hyper, AH46926, "E073", sl),
+        data.frame(source = factor("bigDAP", 
+                                   c("DAP", 
+                                     "bigDAP")),
+                   direction = "hyper"))
+
+ggplot(rbind(or_bp_daps_AH46921_hypo,
+             or_bp_big_daps_AH46921_hypo,
+             or_bp_daps_AH46921_hyper,
+             or_bp_big_daps_AH46921_hyper,
+             or_bp_daps_AH46922_hypo,
+             or_bp_big_daps_AH46922_hypo,
+             or_bp_daps_AH46922_hyper,
+             or_bp_big_daps_AH46922_hyper,
+             or_bp_daps_AH46924_hypo,
+             or_bp_big_daps_AH46924_hypo,
+             or_bp_daps_AH46924_hyper,
+             or_bp_big_daps_AH46924_hyper,
+             or_bp_daps_AH46926_hypo,
+             or_bp_big_daps_AH46926_hypo,
+             or_bp_daps_AH46926_hyper,
+             or_bp_big_daps_AH46926_hyper), 
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. rest of genome (bp)") +
+  ylab("log2(OR) with 95% CI")
+
+ggplot(rbind(or_bp_daps_AH46921_hypo,
+             or_bp_daps_AH46921_hyper,
+             or_bp_daps_AH46922_hypo,
+             or_bp_daps_AH46922_hyper,
+             or_bp_daps_AH46924_hypo,
+             or_bp_daps_AH46924_hyper,
+             or_bp_daps_AH46926_hypo,
+             or_bp_daps_AH46926_hyper),
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. rest of genome (bp)") +
+  ylab("log2(OR) with 95% CI")
+
+ave_or_bp_daps <- rbind(or_bp_daps_AH46921_hypo,
+                     or_bp_daps_AH46921_hyper,
+                     or_bp_daps_AH46922_hypo,
+                     or_bp_daps_AH46922_hyper,
+                     or_bp_daps_AH46924_hypo,
+                     or_bp_daps_AH46924_hyper,
+                     or_bp_daps_AH46926_hypo,
+                     or_bp_daps_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_bp_daps %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("DAPs vs. rest of genome (bp)")
+  
+ave_or_bp_big_daps <- rbind(or_bp_big_daps_AH46921_hypo,
+                            or_bp_big_daps_AH46921_hyper,
+                            or_bp_big_daps_AH46922_hypo,
+                            or_bp_big_daps_AH46922_hyper,
+                            or_bp_big_daps_AH46924_hypo,
+                            or_bp_big_daps_AH46924_hyper,
+                            or_bp_big_daps_AH46926_hypo,
+                            or_bp_big_daps_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_bp_big_daps %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("bigDAPs vs. rest of genome (bp)")
+
+```
+
+### DAPs vs. null-peaks
+
+```{r}
+or_bp_daps_vs_null_AH46921_hypo <- 
+  cbind(FT3(daps_hypo, null_peaks, AH46921, "E068"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_vs_null_AH46921_hypo <- 
+  cbind(FT3(big_daps_hypo, null_peaks, AH46921, "E068"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_vs_null_AH46921_hyper <- 
+  cbind(FT3(daps_hyper, null_peaks, AH46921, "E068"),
+        data.frame(source = factor("DAP",  c("DAP", "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_vs_null_AH46921_hyper <- 
+  cbind(FT3(big_daps_hyper, null_peaks, AH46921, "E068"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+
+or_bp_daps_vs_null_AH46922_hypo <- 
+  cbind(FT3(daps_hypo, null_peaks, AH46922, "E069"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_vs_null_AH46922_hypo <- 
+  cbind(FT3(big_daps_hypo, null_peaks, AH46922, "E069"),
+        data.frame(source = factor("bigDAP", c("DAP",  "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_vs_null_AH46922_hyper <- 
+  cbind(FT3(daps_hyper, null_peaks, AH46922, "E069"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_vs_null_AH46922_hyper <- 
+  cbind(FT3(big_daps_hyper, null_peaks, AH46922, "E069"),
+        data.frame(source = factor("bigDAP",  c("DAP",  "bigDAP")),
+                   direction = "hyper"))
+
+or_bp_daps_vs_null_AH46924_hypo <- 
+  cbind(FT3(daps_hypo, null_peaks, AH46924, "E071"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_vs_null_AH46924_hypo <- 
+  cbind(FT3(big_daps_hypo, null_peaks, AH46924, "E071"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_vs_null_AH46924_hyper <- 
+  cbind(FT3(daps_hyper, null_peaks, AH46924, "E071"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_vs_null_AH46924_hyper <- 
+  cbind(FT3(big_daps_hyper, null_peaks, AH46924, "E071"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+
+or_bp_daps_vs_null_AH46926_hypo <- 
+  cbind(FT3(daps_hypo, null_peaks, AH46926, "E073"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_vs_null_AH46926_hypo <- 
+  cbind(FT3(big_daps_hypo, non_big_daps, AH46926, "E073"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_vs_null_AH46926_hyper <- 
+  cbind(FT3(daps_hyper, null_peaks, AH46926, "E073"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_vs_null_AH46926_hyper <- 
+  cbind(FT3(big_daps_hyper, null_peaks, AH46926, "E073"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+
+ggplot(rbind(or_bp_daps_vs_null_AH46921_hypo,
+             or_bp_big_daps_vs_null_AH46921_hypo,
+             or_bp_daps_vs_null_AH46921_hyper,
+             or_bp_big_daps_vs_null_AH46921_hyper,
+             or_bp_daps_vs_null_AH46922_hypo,
+             or_bp_big_daps_vs_null_AH46922_hypo,
+             or_bp_daps_vs_null_AH46922_hyper,
+             or_bp_big_daps_vs_null_AH46922_hyper,
+             or_bp_daps_vs_null_AH46924_hypo,
+             or_bp_big_daps_vs_null_AH46924_hypo,
+             or_bp_daps_vs_null_AH46924_hyper,
+             or_bp_big_daps_vs_null_AH46924_hyper,
+             or_bp_daps_vs_null_AH46926_hypo,
+             or_bp_big_daps_vs_null_AH46926_hypo,
+             or_bp_daps_vs_null_AH46926_hyper,
+             or_bp_big_daps_vs_null_AH46926_hyper), 
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. null-peaks (bp, chromHMM)") + 
+  ylab("log2(OR) with 95% CI")
+
+ggplot(rbind(or_bp_daps_vs_null_AH46921_hypo,
+             or_bp_daps_vs_null_AH46921_hyper,
+             or_bp_daps_vs_null_AH46922_hypo,
+             or_bp_daps_vs_null_AH46922_hyper,
+             or_bp_daps_vs_null_AH46924_hypo,
+             or_bp_daps_vs_null_AH46924_hyper,
+             or_bp_daps_vs_null_AH46926_hypo,
+             or_bp_daps_vs_null_AH46926_hyper),
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. null-peaks (bp, chromHMM)") + 
+  ylab("log2(OR) with 95% CI")
+
+ave_or_bp_daps_vs_null <-
+  rbind(or_bp_daps_vs_null_AH46921_hypo,
+        or_bp_daps_vs_null_AH46921_hyper,
+        or_bp_daps_vs_null_AH46922_hypo,
+        or_bp_daps_vs_null_AH46922_hyper,
+        or_bp_daps_vs_null_AH46924_hypo,
+        or_bp_daps_vs_null_AH46924_hyper,
+        or_bp_daps_vs_null_AH46926_hypo,
+        or_bp_daps_vs_null_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_bp_daps_vs_null %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("DAPs vs. null-peaks (bp, chromHMM)")
+
+ave_or_bp_big_daps_vs_null <-
+  rbind(or_bp_big_daps_vs_null_AH46921_hypo,
+        or_bp_big_daps_vs_null_AH46921_hyper,
+        or_bp_big_daps_vs_null_AH46922_hypo,
+        or_bp_big_daps_vs_null_AH46922_hyper,
+        or_bp_big_daps_vs_null_AH46924_hypo,
+        or_bp_big_daps_vs_null_AH46924_hyper,
+        or_bp_big_daps_vs_null_AH46926_hypo,
+        or_bp_big_daps_vs_null_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_bp_big_daps_vs_null %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("bigDAPs vs. null-peaks (bp, chromHMM)")
+```
+
+### DAPs vs. non-DAPs
+
+```{r}
+or_bp_daps_vs_non_daps_AH46921_hypo <- 
+  cbind(FT3(daps_hypo, non_daps, AH46921, "E068"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_vs_non_big_daps_AH46921_hypo <- 
+  cbind(FT3(big_daps_hypo, non_big_daps, AH46921, "E068"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_vs_non_daps_AH46921_hyper <- 
+  cbind(FT3(daps_hyper, non_daps, AH46921, "E068"),
+        data.frame(source = factor("DAP",  c("DAP", "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_vs_non_big_daps_AH46921_hyper <- 
+  cbind(FT3(big_daps_hyper, non_big_daps, AH46921, "E068"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+
+or_bp_daps_vs_non_daps_AH46922_hypo <- 
+  cbind(FT3(daps_hypo, non_daps, AH46922, "E069"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_vs_non_big_daps_AH46922_hypo <- 
+  cbind(FT3(big_daps_hypo, non_big_daps, AH46922, "E069"),
+        data.frame(source = factor("bigDAP", c("DAP",  "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_vs_non_daps_AH46922_hyper <- 
+  cbind(FT3(daps_hyper, non_daps, AH46922, "E069"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_vs_non_big_daps_AH46922_hyper <- 
+  cbind(FT3(big_daps_hyper, non_big_daps, AH46922, "E069"),
+        data.frame(source = factor("bigDAP",  c("DAP",  "bigDAP")),
+                   direction = "hyper"))
+
+or_bp_daps_vs_non_daps_AH46924_hypo <- 
+  cbind(FT3(daps_hypo, non_daps, AH46924, "E071"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_vs_non_big_daps_AH46924_hypo <- 
+  cbind(FT3(big_daps_hypo, non_big_daps, AH46924, "E071"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_vs_non_daps_AH46924_hyper <- 
+  cbind(FT3(daps_hyper, non_daps, AH46924, "E071"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_vs_non_big_daps_AH46924_hyper <- 
+  cbind(FT3(big_daps_hyper, non_big_daps, AH46924, "E071"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+
+or_bp_daps_vs_non_daps_AH46926_hypo <- 
+  cbind(FT3(daps_hypo, non_daps, AH46926, "E073"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_big_daps_vs_non_big_daps_AH46926_hypo <- 
+  cbind(FT3(big_daps_hypo, non_big_daps, AH46926, "E073"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hypo"))
+or_bp_daps_vs_non_daps_AH46926_hyper <- 
+  cbind(FT3(daps_hyper, non_daps, AH46926, "E073"),
+        data.frame(source = factor("DAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+or_bp_big_daps_vs_non_big_daps_AH46926_hyper <- 
+  cbind(FT3(big_daps_hyper, non_big_daps, AH46926, "E073"),
+        data.frame(source = factor("bigDAP", c("DAP", "bigDAP")),
+                   direction = "hyper"))
+
+ggplot(rbind(or_bp_daps_vs_non_daps_AH46921_hypo,
+             or_bp_big_daps_vs_non_big_daps_AH46921_hypo,
+             or_bp_daps_vs_non_daps_AH46921_hyper,
+             or_bp_big_daps_vs_non_big_daps_AH46921_hyper,
+             or_bp_daps_vs_non_daps_AH46922_hypo,
+             or_bp_big_daps_vs_non_big_daps_AH46922_hypo,
+             or_bp_daps_vs_non_daps_AH46922_hyper,
+             or_bp_big_daps_vs_non_big_daps_AH46922_hyper,
+             or_bp_daps_vs_non_daps_AH46924_hypo,
+             or_bp_big_daps_vs_non_big_daps_AH46924_hypo,
+             or_bp_daps_vs_non_daps_AH46924_hyper,
+             or_bp_big_daps_vs_non_big_daps_AH46924_hyper,
+             or_bp_daps_vs_non_daps_AH46926_hypo,
+             or_bp_big_daps_vs_non_big_daps_AH46926_hypo,
+             or_bp_daps_vs_non_daps_AH46926_hyper,
+             or_bp_big_daps_vs_non_big_daps_AH46926_hyper), 
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. non-DAPs (bp, chromHMM)") + 
+  ylab("log2(OR) with 95% CI")
+
+ggplot(rbind(or_bp_daps_vs_non_daps_AH46921_hypo,
+             or_bp_daps_vs_non_daps_AH46921_hyper,
+             or_bp_daps_vs_non_daps_AH46922_hypo,
+             or_bp_daps_vs_non_daps_AH46922_hyper,
+             or_bp_daps_vs_non_daps_AH46924_hypo,
+             or_bp_daps_vs_non_daps_AH46924_hyper,
+             or_bp_daps_vs_non_daps_AH46926_hypo,
+             or_bp_daps_vs_non_daps_AH46926_hyper),
+       aes(x = feature, y = log2(estimate), col = source)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = log2(lower), ymax = log2(upper))) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(db ~ direction) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("DAPs vs. non-DAPs (bp, chromHMM)") + 
+  ylab("log2(OR) with 95% CI")
+
+ave_or_bp_daps_vs_non_daps <-
+  rbind(or_bp_daps_vs_non_daps_AH46921_hypo,
+        or_bp_daps_vs_non_daps_AH46921_hyper,
+        or_bp_daps_vs_non_daps_AH46922_hypo,
+        or_bp_daps_vs_non_daps_AH46922_hyper,
+        or_bp_daps_vs_non_daps_AH46924_hypo,
+        or_bp_daps_vs_non_daps_AH46924_hyper,
+        or_bp_daps_vs_non_daps_AH46926_hypo,
+        or_bp_daps_vs_non_daps_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_bp_daps_vs_non_daps %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("DAPs vs. non-DAPs (bp, chromHMM)")
+
+ave_or_bp_big_daps_vs_non_big_daps <-
+  rbind(or_bp_big_daps_vs_non_big_daps_AH46921_hypo,
+        or_bp_big_daps_vs_non_big_daps_AH46921_hyper,
+        or_bp_big_daps_vs_non_big_daps_AH46922_hypo,
+        or_bp_big_daps_vs_non_big_daps_AH46922_hyper,
+        or_bp_big_daps_vs_non_big_daps_AH46924_hypo,
+        or_bp_big_daps_vs_non_big_daps_AH46924_hyper,
+        or_bp_big_daps_vs_non_big_daps_AH46926_hypo,
+        or_bp_big_daps_vs_non_big_daps_AH46926_hyper) %>%
+  group_by(feature) %>%
+  mutate(tmp = mean(estimate)) %>%
+  ungroup() %>%
+  mutate(feature2 = factor(feature, unique(feature[order(tmp)]), 
+                           ordered = TRUE)) %>%
+  group_by(feature2, direction) %>%
+  summarise(ave_log2OR = mean(log2(estimate)),
+            min_log2OR = min(log2(estimate)),
+            max_log2OR = max(log2(estimate))) %>%
+  arrange(desc(ave_log2OR))
+
+ave_or_bp_big_daps_vs_non_big_daps %>%
+  ggplot(aes(x = feature2, col = direction)) + 
+  geom_point(aes(y = ave_log2OR)) +
+  geom_errorbar(aes(ymin = min_log2OR, ymax = max_log2OR)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_hline(yintercept = 0) + 
+  ggtitle("bigDAPs vs. non-DAPs (bp, chromHMM)")
+```
