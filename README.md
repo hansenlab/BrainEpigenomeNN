@@ -1,6 +1,7 @@
 # Neuronal brain region-specific DNA methylation and chromatin accessibility are associated with neuropsychiatric trait heritability
 
-Scripts used for analysis of data in paper, 'Neuronal brain region-specific DNA methylation and chromatin accessibility are associated with neuropsychiatric trait heritability' ([https://doi.org/10.1101/120386](https://doi.org/10.1101/120386), to appear in Nature Neuroscience).
+Scripts used for analysis of data in paper, 'Neuronal brain region-specific DNA methylation and chromatin accessibility are associated with neuropsychiatric trait heritability'. A preprint is availble on bioRxiv ([https://doi.org/10.1101/120386](https://doi.org/10.1101/120386), and the paper is in press. The code in this repository reflects the final submitted version, which is substantially different from the version on bioRxiv.
+
 This is a complicated project and reproducing all of the results presented, especially from raw data, is highly non-trivial.
 
 The version of this Github repository submitted with the paper has the following DOI on Zenodo  
