@@ -3,6 +3,9 @@
 Scripts used for analysis of data in paper, 'Neuronal brain region-specific DNA methylation and chromatin accessibility are associated with neuropsychiatric trait heritability' ([https://doi.org/10.1101/120386](https://doi.org/10.1101/120386), to appear in Nature Neuroscience).
 This is a complicated project and reproducing all of the results presented, especially from raw data, is highly non-trivial.
 
+The version submitted with the paper has the following DOI on Zenodo  
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1469577.svg)](https://doi.org/10.5281/zenodo.1469577)
+
 To be clear, the code in this repository was not written with the intention of it being an example of clean, reproducible analyses documenting the figures reported in the paper.
 Consequently, the code in this repository is warts-and-all: it includes code underlying published figures but also dead-end analyses and abandoned ideas.
 ~~Abandon hope~~ Fair warning to all ye who enter here.
